@@ -1,0 +1,53 @@
+'use client';
+
+import { WorkspaceModuleCard } from '@/components/workspace/module-card';
+import { TerminalHeader } from '@/components/workspace/terminal-header';
+import { useWorkspaceModules } from '@/components/workspace/use-workspace-modules';
+import { WorkspaceToolbar } from '@/components/workspace/workspace-toolbar';
+
+export function TradingWorkspace() {
+  const {
+    modules,
+    draggingId,
+    dropTargetId,
+    addModule,
+    removeModule,
+    resetLayout,
+    handleDragStart,
+    handleDragOverModule,
+    handleDropOnModule,
+    handleDropOnCanvas,
+    clearDragState,
+  } = useWorkspaceModules();
+
+  return (
+    <main className="terminal-page">
+      <section className="terminal-shell">
+        <TerminalHeader />
+        <WorkspaceToolbar onAddModule={addModule} onResetLayout={resetLayout} />
+
+        <section
+          className="workspace-grid"
+          aria-label="Trading workspace modules"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={handleDropOnCanvas}
+        >
+          {modules.map((module) => (
+            <WorkspaceModuleCard
+              key={module.id}
+              module={module}
+              draggingId={draggingId}
+              dropTargetId={dropTargetId}
+              onRemove={removeModule}
+              onDragStart={handleDragStart}
+              onDragOverModule={handleDragOverModule}
+              onDropOnModule={handleDropOnModule}
+              onDragEnd={clearDragState}
+            />
+          ))}
+        </section>
+      </section>
+    </main>
+  );
+}
+

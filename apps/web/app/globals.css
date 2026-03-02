@@ -100,7 +100,11 @@ body {
   gap: 0.55rem;
 }
 
-.button {
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   border-radius: 7px;
   border: 1px solid var(--border);
   padding: 0.52rem 0.95rem;
@@ -111,31 +115,107 @@ body {
   background: linear-gradient(180deg, #191f2c, #131924);
   cursor: pointer;
   transition: transform 120ms ease, border-color 120ms ease, background-color 120ms ease;
+  text-decoration: none;
+  white-space: nowrap;
 }
 
-.button:hover {
+.ui-button:hover {
   border-color: #344153;
   transform: translateY(-1px);
 }
 
-.button-primary {
+.ui-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
+.ui-button-default {
   border-color: #3f7f71;
   background: linear-gradient(180deg, #11b282, #0e8e68);
   color: #f4fff9;
 }
 
-.button-primary:hover {
+.ui-button-default:hover {
   border-color: #53a691;
 }
 
-.button-outline {
+.ui-button-outline {
   color: #c9d5ea;
+  border-color: #2d3a4d;
+  background: linear-gradient(180deg, #181f2c, #121821);
 }
 
-.button-soft {
+.ui-button-soft {
   padding-inline: 0.84rem;
   background: linear-gradient(180deg, #171d28, #141a24);
   color: var(--text-soft);
+}
+
+.ui-button-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-soft);
+}
+
+.ui-button-ghost:hover {
+  border-color: #293348;
+  background: rgba(34, 44, 60, 0.25);
+}
+
+.ui-button-destructive {
+  border-color: #7d4050;
+  background: linear-gradient(180deg, #a34e62, #843f50);
+  color: #fff5f8;
+}
+
+.ui-button-size-default {
+  min-height: 36px;
+}
+
+.ui-button-size-sm {
+  min-height: 32px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+}
+
+.ui-button-size-lg {
+  min-height: 40px;
+  padding-inline: 1rem;
+}
+
+.ui-button-size-icon {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  min-width: 34px;
+  padding: 0;
+}
+
+.ui-card {
+  border-radius: 10px;
+}
+
+.ui-card-header,
+.ui-card-content,
+.ui-card-footer {
+  margin: 0;
+}
+
+.ui-input {
+  width: 100%;
+  border: 1px solid #1f2936;
+  border-radius: 6px;
+  min-height: 37px;
+  font: inherit;
+  color: var(--text);
+  background: #141b26;
+  padding: 0.35rem 0.55rem;
+}
+
+.ui-input:focus-visible {
+  outline: 1px solid #3e5f86;
+  border-color: #335072;
 }
 
 .workspace-toolbar {
@@ -348,7 +428,7 @@ body {
   gap: 0.46rem;
 }
 
-.trade-switch button {
+.trade-switch .ui-button {
   border: 1px solid #1f2a37;
   border-radius: 6px;
   min-height: 36px;
@@ -372,23 +452,13 @@ body {
   text-transform: uppercase;
 }
 
-.trade-panel input {
-  border: 1px solid #1f2936;
-  border-radius: 6px;
-  min-height: 37px;
-  font: inherit;
-  color: var(--text);
-  background: #141b26;
-  padding: 0.35rem 0.55rem;
-}
-
 .quick-split {
   display: grid;
   gap: 0.42rem;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.quick-split button,
+.quick-split .ui-button,
 .trade-submit {
   border: 1px solid #243145;
   border-radius: 6px;
