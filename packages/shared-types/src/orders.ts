@@ -1,3 +1,5 @@
+import type { ChainId } from './index.js';
+
 export type OrderSide = 'buy' | 'sell';
 export type OrderType = 'market' | 'limit';
 export type OrderStatus =
@@ -11,21 +13,31 @@ export type QuoteStatus = 'fresh' | 'stale' | 'expired';
 export type TxPayloadKind = 'evm_transaction';
 export type FillLiquidity = 'maker' | 'taker';
 
-export interface OrderRequest {
+interface BaseOrderRequest {
   walletAddress: string;
-  chainId: number;
+  chainId: ChainId;
   symbol: string;
   side: OrderSide;
-  type: OrderType;
   quantity: string;
-  limitPrice?: string;
   clientOrderId?: string;
 }
+
+export interface MarketOrderRequest extends BaseOrderRequest {
+  type: 'market';
+  limitPrice?: never;
+}
+
+export interface LimitOrderRequest extends BaseOrderRequest {
+  type: 'limit';
+  limitPrice: string;
+}
+
+export type OrderRequest = MarketOrderRequest | LimitOrderRequest;
 
 export interface Order {
   id: string;
   walletAddress: string;
-  chainId: number;
+  chainId: ChainId;
   symbol: string;
   side: OrderSide;
   type: OrderType;
@@ -43,7 +55,7 @@ export interface Order {
 export interface Quote {
   id: string;
   walletAddress: string;
-  chainId: number;
+  chainId: ChainId;
   symbol: string;
   side: OrderSide;
   quantity: string;
@@ -57,7 +69,7 @@ export interface Quote {
 
 export interface UnsignedTxPayload {
   id: string;
-  chainId: number;
+  chainId: ChainId;
   kind: TxPayloadKind;
   to: string;
   data: string;
@@ -72,7 +84,7 @@ export interface Fill {
   id: string;
   orderId: string;
   walletAddress: string;
-  chainId: number;
+  chainId: ChainId;
   symbol: string;
   side: OrderSide;
   quantity: string;
