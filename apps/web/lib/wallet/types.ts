@@ -1,10 +1,15 @@
 export type WalletSlotStatus = 'connected' | 'disconnected' | 'stale';
 
+export const WALLET_CONNECTOR_IDS = ['injected', 'coinbaseWalletSDK', 'walletConnect'] as const;
+export type WalletConnectorId = (typeof WALLET_CONNECTOR_IDS)[number];
+
+export type WalletConnectorUnavailableReason = 'connector-in-use' | 'connector-disabled';
+
 export interface WalletSlot {
   id: string;
   address: string;
   chainId: number;
-  connectorId: string;
+  connectorId: WalletConnectorId;
   label?: string;
   lastConnectedAt: string;
   status: WalletSlotStatus;
@@ -16,19 +21,34 @@ export interface WalletSessionState {
 }
 
 export interface ConnectedWalletPayload {
+  slotId?: string;
   address: string;
   chainId: number;
-  connectorId: string;
+  connectorId: WalletConnectorId;
   label?: string;
   connectedAt?: string;
 }
 
-export type ConnectWalletReason = 'connected' | 'unavailable' | 'failed';
+export interface WalletConnectorOption {
+  id: WalletConnectorId;
+  label: string;
+  available: boolean;
+  unavailableReason?: WalletConnectorUnavailableReason;
+}
+
+export type ConnectWalletReason =
+  | 'connected'
+  | 'reconnected'
+  | 'unavailable'
+  | 'failed'
+  | 'connector-in-use'
+  | 'connector-missing';
 
 export type WalletStateChangeReason =
   | 'added'
   | 'updated'
   | 'activated'
+  | 'disconnected'
   | 'removed'
   | 'status-updated'
   | 'cleared'
@@ -36,7 +56,10 @@ export type WalletStateChangeReason =
   | 'invalid-payload'
   | 'slots-full'
   | 'unavailable'
-  | 'no-live-session';
+  | 'no-live-session'
+  | 'reconnected'
+  | 'connector-in-use'
+  | 'connector-missing';
 
 export interface WalletStateResult {
   state: WalletSessionState;
@@ -55,10 +78,12 @@ export interface WalletManagerApi {
   activeSlot: WalletSlot | null;
   activeSlotId: string | null;
   canAddWallet: boolean;
-  connectWallet: () => Promise<ConnectWalletResult>;
-  syncFromWagmiSession: () => WalletStateResult;
+  hasHydrated: boolean;
+  getConnectorOptions: () => WalletConnectorOption[];
+  connectNewSlot: (connectorId: WalletConnectorId) => Promise<ConnectWalletResult>;
+  reconnectSlot: (slotId: string) => Promise<ConnectWalletResult>;
   setActiveSlot: (slotId: string) => WalletStateResult;
-  disconnectSlot: (slotId: string) => WalletStateResult;
-  replaceSlot: (slotId: string) => WalletStateResult;
+  disconnectSlot: (slotId: string) => Promise<WalletStateResult>;
+  removeSlot: (slotId: string) => WalletStateResult;
   clearAllSlots: () => WalletStateResult;
 }
