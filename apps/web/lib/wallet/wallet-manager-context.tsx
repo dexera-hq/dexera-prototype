@@ -1,6 +1,5 @@
 'use client';
 
-import { useConnectModal } from '@rainbow-me/rainbowkit';
 import {
   createContext,
   useCallback,
@@ -73,7 +72,6 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
   const hasReconciledInitialSession = useRef(false);
 
   const { address, chainId, connector, isConnected, status } = useAccount();
-  const { openConnectModal } = useConnectModal();
   const { connectAsync, connectors } = useConnect();
   const { disconnectAsync } = useDisconnect();
 
@@ -172,15 +170,6 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
   }, [address, applyConnectedSession, chainId, connector?.id, hasHydrated, isConnected]);
 
   function connectWallet(): ConnectWalletResult {
-    if (openConnectModal) {
-      openConnectModal();
-
-      return {
-        opened: true,
-        reason: 'opened',
-      };
-    }
-
     const targetConnector =
       connectors.find((candidate) => candidate.id === 'injected') ??
       connectors.find((candidate) => candidate.id === 'coinbaseWalletSDK') ??
