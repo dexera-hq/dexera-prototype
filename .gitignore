@@ -25,3 +25,6 @@ apps/bff-go/*.exe
 
 # Turbo
 .turbo/
+
+# Test results
+test-results/

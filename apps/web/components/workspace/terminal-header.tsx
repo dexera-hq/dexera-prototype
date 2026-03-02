@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { WalletConnectButton } from '@/components/workspace/wallet-connect-button';
 
 export function TerminalHeader() {
   return (
@@ -15,9 +16,8 @@ export function TerminalHeader() {
         <Button type="button" variant="outline">
           Customize
         </Button>
-        <Button type="button">Connect Wallet</Button>
+        <WalletConnectButton />
       </div>
     </header>
   );
 }
-
