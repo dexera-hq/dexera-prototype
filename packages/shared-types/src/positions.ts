@@ -1,4 +1,3 @@
-import type { ChainId } from './index.js';
 import type { Wallet } from './wallets.js';
 
 export type PositionSide = 'long' | 'short';
