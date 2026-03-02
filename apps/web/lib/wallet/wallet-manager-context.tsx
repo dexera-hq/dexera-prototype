@@ -24,6 +24,7 @@ import {
   walletAddressesMatch,
   writeWalletSessionState,
 } from './session-store';
+import { findFirstAvailableConnector } from './connector-utils';
 import type { ConnectWalletResult, WalletManagerApi, WalletSessionState, WalletStateResult } from './types';
 
 const fallbackState = createEmptyWalletSessionState();
@@ -33,8 +34,8 @@ const fallbackWalletManager: WalletManagerApi = {
   activeSlot: null,
   activeSlotId: fallbackState.activeSlotId,
   canAddWallet: true,
-  connectWallet: () => ({
-    opened: false,
+  connectWallet: async () => ({
+    connected: false,
     reason: 'unavailable',
   }),
   syncFromWagmiSession: () => ({
@@ -169,25 +170,29 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
     applyConnectedSession();
   }, [address, applyConnectedSession, chainId, connector?.id, hasHydrated, isConnected]);
 
-  function connectWallet(): ConnectWalletResult {
-    const targetConnector =
-      connectors.find((candidate) => candidate.id === 'injected') ??
-      connectors.find((candidate) => candidate.id === 'coinbaseWalletSDK') ??
-      connectors[0];
+  async function connectWallet(): Promise<ConnectWalletResult> {
+    const targetConnector = await findFirstAvailableConnector(connectors);
 
     if (!targetConnector) {
       return {
-        opened: false,
+        connected: false,
         reason: 'unavailable',
       };
     }
 
-    void connectAsync({ connector: targetConnector }).catch(() => undefined);
+    try {
+      await connectAsync({ connector: targetConnector });
 
-    return {
-      opened: true,
-      reason: 'opened',
-    };
+      return {
+        connected: true,
+        reason: 'connected',
+      };
+    } catch {
+      return {
+        connected: false,
+        reason: 'failed',
+      };
+    }
   }
 
   function syncFromWagmiSession(): WalletStateResult {
@@ -231,7 +236,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
     const nextResult = disconnectSlot(slotId);
 
     if (nextResult.changed) {
-      connectWallet();
+      void connectWallet();
     }
 
     return nextResult;

@@ -1,3 +1,6 @@
+import type { Chain } from 'viem';
+import { mainnet } from 'wagmi/chains';
+
 export const HYPER_EVM_CHAIN_ID = 999;
 export const HYPER_EVM_RPC_URL = 'https://rpc.hyperliquid.xyz/evm';
 export const HYPER_EVM_EXPLORER_URL = 'https://hyperevmscan.io';
@@ -26,3 +29,10 @@ export const hyperEvmChainDefinition = {
   },
   testnet: false,
 } as const;
+
+export const hyperEvmChain = hyperEvmChainDefinition satisfies Chain;
+export const walletChains = [mainnet, hyperEvmChain] as const satisfies readonly [Chain, ...Chain[]];
+
+export function getWalletChainLabel(chainId: number): string {
+  return walletChains.find((chain) => chain.id === chainId)?.name ?? `Chain ${chainId}`;
+}

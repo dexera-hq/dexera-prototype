@@ -23,6 +23,8 @@ export interface ConnectedWalletPayload {
   connectedAt?: string;
 }
 
+export type ConnectWalletReason = 'connected' | 'unavailable' | 'failed';
+
 export type WalletStateChangeReason =
   | 'added'
   | 'updated'
@@ -44,8 +46,8 @@ export interface WalletStateResult {
 }
 
 export interface ConnectWalletResult {
-  opened: boolean;
-  reason: 'opened' | 'unavailable';
+  connected: boolean;
+  reason: ConnectWalletReason;
 }
 
 export interface WalletManagerApi {
@@ -53,7 +55,7 @@ export interface WalletManagerApi {
   activeSlot: WalletSlot | null;
   activeSlotId: string | null;
   canAddWallet: boolean;
-  connectWallet: () => ConnectWalletResult;
+  connectWallet: () => Promise<ConnectWalletResult>;
   syncFromWagmiSession: () => WalletStateResult;
   setActiveSlot: (slotId: string) => WalletStateResult;
   disconnectSlot: (slotId: string) => WalletStateResult;
