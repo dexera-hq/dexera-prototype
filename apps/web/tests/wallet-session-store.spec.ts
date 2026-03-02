@@ -5,6 +5,7 @@ import {
   WALLET_SESSION_STORAGE_KEY,
   createEmptyWalletSessionState,
   deserializeWalletSessionState,
+  disconnectWalletSlot,
   markAllWalletSlots,
   readWalletSessionState,
   removeWalletSlot,
@@ -20,8 +21,8 @@ describe('wallet session store', () => {
     const first = upsertConnectedWallet(state, {
       address: '0x1111',
       chainId: 1,
-      connectorId: 'metaMask',
-      label: 'MetaMask',
+      connectorId: 'injected',
+      label: 'Injected',
       connectedAt: '2026-03-02T10:00:00.000Z',
     });
 
@@ -31,8 +32,8 @@ describe('wallet session store', () => {
     const second = upsertConnectedWallet(state, {
       address: '0x2222',
       chainId: 1,
-      connectorId: 'rainbow',
-      label: 'Rainbow',
+      connectorId: 'coinbaseWalletSDK',
+      label: 'Coinbase Wallet',
       connectedAt: '2026-03-02T10:05:00.000Z',
     });
 
@@ -53,8 +54,8 @@ describe('wallet session store', () => {
     const fourth = upsertConnectedWallet(state, {
       address: '0x4444',
       chainId: 1,
-      connectorId: 'coinbaseWallet',
-      label: 'Coinbase',
+      connectorId: 'injected',
+      label: 'Injected',
       connectedAt: '2026-03-02T10:15:00.000Z',
     });
 
@@ -63,19 +64,21 @@ describe('wallet session store', () => {
     expect(fourth.state.slots).toHaveLength(MAX_WALLET_SLOTS);
   });
 
-  it('upserts an existing slot instead of duplicating it', () => {
+  it('updates an existing slot by slot id without creating duplicates', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
+      slotId: 'slot-1',
       address: '0xAAAA',
       chainId: 1,
-      connectorId: 'metaMask',
+      connectorId: 'injected',
       connectedAt: '2026-03-02T10:00:00.000Z',
     });
 
     const updated = upsertConnectedWallet(first.state, {
-      address: '0xaaaa',
+      slotId: 'slot-1',
+      address: '0xBBBB',
       chainId: 999,
-      connectorId: 'metaMask',
-      label: 'MetaMask',
+      connectorId: 'injected',
+      label: 'Injected',
       connectedAt: '2026-03-02T10:30:00.000Z',
     });
 
@@ -86,22 +89,40 @@ describe('wallet session store', () => {
     if (!updatedSlot) {
       throw new Error('Expected the updated wallet slot to exist');
     }
+    expect(updatedSlot.id).toBe('slot-1');
+    expect(updatedSlot.address).toBe('0xbbbb');
     expect(updatedSlot.chainId).toBe(999);
-    expect(updatedSlot.label).toBe('MetaMask');
+    expect(updatedSlot.label).toBe('Injected');
     expect(updated.state.activeSlotId).toBe(updatedSlot.id);
+  });
+
+  it('marks a slot disconnected without removing it', () => {
+    const connected = upsertConnectedWallet(createEmptyWalletSessionState(), {
+      slotId: 'slot-1',
+      address: '0x1111',
+      chainId: 1,
+      connectorId: 'injected',
+      connectedAt: '2026-03-02T10:00:00.000Z',
+    });
+
+    const disconnected = disconnectWalletSlot(connected.state, 'slot-1');
+
+    expect(disconnected.reason).toBe('disconnected');
+    expect(disconnected.state.slots).toHaveLength(1);
+    expect(disconnected.state.slots[0]?.status).toBe('disconnected');
   });
 
   it('removes the active slot and promotes the next most recent slot', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
       address: '0x1111',
       chainId: 1,
-      connectorId: 'metaMask',
+      connectorId: 'injected',
       connectedAt: '2026-03-02T10:00:00.000Z',
     });
     const second = upsertConnectedWallet(first.state, {
       address: '0x2222',
       chainId: 1,
-      connectorId: 'rainbow',
+      connectorId: 'coinbaseWalletSDK',
       connectedAt: '2026-03-02T10:10:00.000Z',
     });
     const third = upsertConnectedWallet(second.state, {
@@ -134,25 +155,26 @@ describe('wallet session store', () => {
     const serialized = serializeWalletSessionState(connected.state);
 
     expect(deserializeWalletSessionState(serialized)).toEqual(connected.state);
-    expect(deserializeWalletSessionState('{not-valid-json')).toEqual(createEmptyWalletSessionState());
+    expect(deserializeWalletSessionState('{not-valid-json')).toEqual(
+      createEmptyWalletSessionState(),
+    );
 
     const storage = {
-      value: null as string | null,
+      values: new Map<string, string>(),
       getItem(key: string) {
-        return key === WALLET_SESSION_STORAGE_KEY ? this.value : null;
+        return this.values.get(key) ?? null;
       },
       setItem(key: string, value: string) {
-        if (key === WALLET_SESSION_STORAGE_KEY) {
-          this.value = value;
-        }
+        this.values.set(key, value);
       },
-      removeItem() {
-        this.value = null;
+      removeItem(key: string) {
+        this.values.delete(key);
       },
     };
 
     writeWalletSessionState(storage, connected.state);
 
+    expect(storage.getItem(WALLET_SESSION_STORAGE_KEY)).not.toBeNull();
     expect(readWalletSessionState(storage)).toEqual(connected.state);
   });
 
@@ -160,7 +182,7 @@ describe('wallet session store', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
       address: '0x1111',
       chainId: 1,
-      connectorId: 'metaMask',
+      connectorId: 'injected',
       connectedAt: '2026-03-02T10:00:00.000Z',
     });
     const second = upsertConnectedWallet(first.state, {

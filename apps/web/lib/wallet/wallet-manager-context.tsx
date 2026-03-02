@@ -5,55 +5,81 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react';
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
 
+import {
+  clearRuntimeSlots,
+  connectRuntimeSlot,
+  disconnectRuntimeSlot,
+  isWalletConnectEnabled,
+  reconnectRuntimeSlot,
+  watchRuntimeSlotAccount,
+} from './multi-session-runtime';
 import {
   MAX_WALLET_SLOTS,
   clearWalletSessionSlots,
   clearWalletSessionStorage,
   createEmptyWalletSessionState,
-  markAllWalletSlots,
+  disconnectWalletSlot,
+  markWalletSlotStatus,
   readWalletSessionState,
   removeWalletSlot,
   setActiveWalletSlot,
   upsertConnectedWallet,
-  walletAddressesMatch,
   writeWalletSessionState,
 } from './session-store';
-import { findFirstAvailableConnector } from './connector-utils';
-import type { ConnectWalletResult, WalletManagerApi, WalletSessionState, WalletStateResult } from './types';
+import type {
+  ConnectWalletResult,
+  WalletConnectorId,
+  WalletManagerApi,
+  WalletSessionState,
+  WalletStateResult,
+} from './types';
+import {
+  getConnectorOptions as buildConnectorOptions,
+  isConnectorLocked,
+} from './wallet-manager-logic';
 
 const fallbackState = createEmptyWalletSessionState();
+
+function createEphemeralSlotId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return `wallet-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 10)}`;
+}
 
 const fallbackWalletManager: WalletManagerApi = {
   slots: fallbackState.slots,
   activeSlot: null,
   activeSlotId: fallbackState.activeSlotId,
   canAddWallet: true,
-  connectWallet: async () => ({
+  hasHydrated: false,
+  getConnectorOptions: () => [],
+  connectNewSlot: async () => ({
     connected: false,
     reason: 'unavailable',
   }),
-  syncFromWagmiSession: () => ({
-    state: fallbackState,
-    changed: false,
-    reason: 'no-live-session',
+  reconnectSlot: async () => ({
+    connected: false,
+    reason: 'unavailable',
   }),
   setActiveSlot: () => ({
     state: fallbackState,
     changed: false,
     reason: 'unavailable',
   }),
-  disconnectSlot: () => ({
+  disconnectSlot: async () => ({
     state: fallbackState,
     changed: false,
     reason: 'unavailable',
   }),
-  replaceSlot: () => ({
+  removeSlot: () => ({
     state: fallbackState,
     changed: false,
     reason: 'unavailable',
@@ -68,13 +94,71 @@ const fallbackWalletManager: WalletManagerApi = {
 const WalletManagerContext = createContext<WalletManagerApi>(fallbackWalletManager);
 
 export function WalletManagerProvider({ children }: { children: ReactNode }) {
-  const [sessionState, setSessionState] = useState<WalletSessionState>(createEmptyWalletSessionState);
+  const [sessionState, setSessionState] = useState<WalletSessionState>(
+    createEmptyWalletSessionState,
+  );
   const [hasHydrated, setHasHydrated] = useState(false);
-  const hasReconciledInitialSession = useRef(false);
 
-  const { address, chainId, connector, isConnected, status } = useAccount();
-  const { connectAsync, connectors } = useConnect();
-  const { disconnectAsync } = useDisconnect();
+  const stateRef = useRef(sessionState);
+  const hasReconciledPersistedSessions = useRef(false);
+  const slotWatchers = useRef(new Map<string, () => void>());
+
+  const walletConnectEnabled = isWalletConnectEnabled();
+
+  useEffect(() => {
+    stateRef.current = sessionState;
+  }, [sessionState]);
+
+  const stopWatchingSlot = useCallback((slotId: string) => {
+    const stopWatching = slotWatchers.current.get(slotId);
+    if (!stopWatching) {
+      return;
+    }
+
+    stopWatching();
+    slotWatchers.current.delete(slotId);
+  }, []);
+
+  const stopWatchingAllSlots = useCallback(() => {
+    for (const stopWatching of slotWatchers.current.values()) {
+      stopWatching();
+    }
+
+    slotWatchers.current.clear();
+  }, []);
+
+  const startWatchingSlot = useCallback((slotId: string) => {
+    if (slotWatchers.current.has(slotId)) {
+      return;
+    }
+
+    const unwatch = watchRuntimeSlotAccount(slotId, (account) => {
+      setSessionState((currentState) => {
+        const currentSlot = currentState.slots.find((slot) => slot.id === slotId);
+
+        if (!currentSlot) {
+          return currentState;
+        }
+
+        if (!account.isConnected || !account.address || !account.chainId || !account.connectorId) {
+          const staleResult = markWalletSlotStatus(currentState, slotId, 'stale');
+          return staleResult.changed ? staleResult.state : currentState;
+        }
+
+        const nextResult = upsertConnectedWallet(currentState, {
+          slotId,
+          address: account.address,
+          chainId: account.chainId,
+          connectorId: account.connectorId,
+          label: account.connectorLabel,
+        });
+
+        return nextResult.changed ? nextResult.state : currentState;
+      });
+    });
+
+    slotWatchers.current.set(slotId, unwatch);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -85,176 +169,306 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
     setHasHydrated(true);
   }, []);
 
-  const persistSessionState = useCallback((nextState: WalletSessionState) => {
-    if (typeof window === 'undefined') {
+  useEffect(() => {
+    if (!hasHydrated || typeof window === 'undefined') {
       return;
     }
 
-    if (nextState.slots.length === 0 && nextState.activeSlotId === null) {
+    if (sessionState.slots.length === 0 && sessionState.activeSlotId === null) {
       clearWalletSessionStorage(window.localStorage);
       return;
     }
 
-    writeWalletSessionState(window.localStorage, nextState);
-  }, []);
+    writeWalletSessionState(window.localStorage, sessionState);
+  }, [hasHydrated, sessionState]);
 
-  const applyConnectedSession = useCallback((): WalletStateResult => {
-    if (!address || !chainId || !connector?.id) {
-      return {
-        state: sessionState,
-        changed: false,
-        reason: 'no-live-session',
-      };
+  useEffect(() => {
+    if (!hasHydrated || hasReconciledPersistedSessions.current) {
+      return;
     }
 
-    const nextResult = upsertConnectedWallet(sessionState, {
-      address,
-      chainId,
-      connectorId: connector.id,
-      label: connector.name,
+    let isCancelled = false;
+
+    async function reconcilePersistedSessions() {
+      const previousState = stateRef.current;
+      const lockedConnectors = new Set<WalletConnectorId>();
+      let nextState = previousState;
+
+      for (const slot of previousState.slots) {
+        if (slot.status !== 'connected') {
+          continue;
+        }
+
+        if (lockedConnectors.has(slot.connectorId)) {
+          const lockedResult = markWalletSlotStatus(nextState, slot.id, 'stale');
+          nextState = lockedResult.state;
+          continue;
+        }
+
+        if (slot.connectorId === 'walletConnect' && !walletConnectEnabled) {
+          const disabledResult = markWalletSlotStatus(nextState, slot.id, 'stale');
+          nextState = disabledResult.state;
+          continue;
+        }
+
+        const reconnectResult = await reconnectRuntimeSlot(slot.id, slot.connectorId);
+
+        if (
+          !reconnectResult.connected ||
+          !reconnectResult.account?.address ||
+          !reconnectResult.account?.chainId ||
+          !reconnectResult.account.connectorId
+        ) {
+          const staleResult = markWalletSlotStatus(nextState, slot.id, 'stale');
+          nextState = staleResult.state;
+          continue;
+        }
+
+        const upsertResult = upsertConnectedWallet(nextState, {
+          slotId: slot.id,
+          address: reconnectResult.account.address,
+          chainId: reconnectResult.account.chainId,
+          connectorId: reconnectResult.account.connectorId,
+          label: reconnectResult.account.connectorLabel,
+        });
+
+        nextState = upsertResult.state;
+        lockedConnectors.add(slot.connectorId);
+
+        if (!isCancelled) {
+          startWatchingSlot(slot.id);
+        }
+      }
+
+      if (isCancelled) {
+        return;
+      }
+
+      hasReconciledPersistedSessions.current = true;
+      setSessionState(nextState);
+    }
+
+    void reconcilePersistedSessions();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [hasHydrated, startWatchingSlot, walletConnectEnabled]);
+
+  useEffect(() => {
+    return () => {
+      stopWatchingAllSlots();
+    };
+  }, [stopWatchingAllSlots]);
+
+  const getConnectorOptions = useCallback(() => {
+    return buildConnectorOptions({
+      slots: stateRef.current.slots,
+      walletConnectEnabled,
     });
+  }, [walletConnectEnabled]);
 
-    if (nextResult.changed) {
+  const connectNewSlot = useCallback(
+    async (connectorId: WalletConnectorId): Promise<ConnectWalletResult> => {
+      if (!hasHydrated || stateRef.current.slots.length >= MAX_WALLET_SLOTS) {
+        return {
+          connected: false,
+          reason: 'unavailable',
+        };
+      }
+
+      if (connectorId === 'walletConnect' && !walletConnectEnabled) {
+        return {
+          connected: false,
+          reason: 'connector-missing',
+        };
+      }
+
+      if (isConnectorLocked(stateRef.current.slots, connectorId)) {
+        return {
+          connected: false,
+          reason: 'connector-in-use',
+        };
+      }
+
+      const slotId = createEphemeralSlotId();
+      const connectResult = await connectRuntimeSlot(slotId, connectorId);
+
+      if (
+        !connectResult.connected ||
+        !connectResult.account?.address ||
+        !connectResult.account.chainId ||
+        !connectResult.account.connectorId
+      ) {
+        return {
+          connected: false,
+          reason: connectResult.reason,
+        };
+      }
+
+      const nextResult = upsertConnectedWallet(stateRef.current, {
+        slotId,
+        address: connectResult.account.address,
+        chainId: connectResult.account.chainId,
+        connectorId: connectResult.account.connectorId,
+        label: connectResult.account.connectorLabel,
+      });
+
+      if (!nextResult.changed) {
+        await clearRuntimeSlots([slotId]);
+
+        return {
+          connected: false,
+          reason: nextResult.reason === 'slots-full' ? 'unavailable' : 'failed',
+        };
+      }
+
       setSessionState(nextResult.state);
-    }
-
-    hasReconciledInitialSession.current = true;
-
-    return nextResult;
-  }, [address, chainId, connector?.id, connector?.name, sessionState]);
-
-  const reconcilePersistedSessions = useCallback(() => {
-    if (hasReconciledInitialSession.current) {
-      return;
-    }
-
-    if (status === 'connecting' || status === 'reconnecting') {
-      return;
-    }
-
-    if (status === 'connected') {
-      applyConnectedSession();
-      return;
-    }
-
-    const nextResult = markAllWalletSlots(sessionState, 'stale');
-
-    if (nextResult.changed) {
-      setSessionState(nextResult.state);
-    }
-
-    hasReconciledInitialSession.current = true;
-  }, [applyConnectedSession, sessionState, status]);
-
-  useEffect(() => {
-    if (!hasHydrated) {
-      return;
-    }
-
-    persistSessionState(sessionState);
-  }, [hasHydrated, persistSessionState, sessionState]);
-
-  useEffect(() => {
-    if (!hasHydrated) {
-      return;
-    }
-
-    reconcilePersistedSessions();
-  }, [address, chainId, connector?.id, hasHydrated, reconcilePersistedSessions, status]);
-
-  useEffect(() => {
-    if (!hasHydrated || !isConnected || !address || !chainId || !connector?.id) {
-      return;
-    }
-
-    applyConnectedSession();
-  }, [address, applyConnectedSession, chainId, connector?.id, hasHydrated, isConnected]);
-
-  async function connectWallet(): Promise<ConnectWalletResult> {
-    const targetConnector = await findFirstAvailableConnector(connectors);
-
-    if (!targetConnector) {
-      return {
-        connected: false,
-        reason: 'unavailable',
-      };
-    }
-
-    try {
-      await connectAsync({ connector: targetConnector });
+      startWatchingSlot(slotId);
 
       return {
         connected: true,
-        reason: 'connected',
+        reason: connectResult.reason,
       };
-    } catch {
+    },
+    [hasHydrated, startWatchingSlot, walletConnectEnabled],
+  );
+
+  const reconnectSlot = useCallback(
+    async (slotId: string): Promise<ConnectWalletResult> => {
+      const slot = stateRef.current.slots.find((candidate) => candidate.id === slotId);
+
+      if (!slot) {
+        return {
+          connected: false,
+          reason: 'unavailable',
+        };
+      }
+
+      if (slot.connectorId === 'walletConnect' && !walletConnectEnabled) {
+        return {
+          connected: false,
+          reason: 'connector-missing',
+        };
+      }
+
+      if (isConnectorLocked(stateRef.current.slots, slot.connectorId, slotId)) {
+        return {
+          connected: false,
+          reason: 'connector-in-use',
+        };
+      }
+
+      const reconnectResult = await reconnectRuntimeSlot(slotId, slot.connectorId);
+
+      if (
+        !reconnectResult.connected ||
+        !reconnectResult.account?.address ||
+        !reconnectResult.account.chainId ||
+        !reconnectResult.account.connectorId
+      ) {
+        const staleResult = markWalletSlotStatus(stateRef.current, slotId, 'stale');
+
+        if (staleResult.changed) {
+          setSessionState(staleResult.state);
+        }
+
+        return {
+          connected: false,
+          reason: reconnectResult.reason,
+        };
+      }
+
+      const nextResult = upsertConnectedWallet(stateRef.current, {
+        slotId,
+        address: reconnectResult.account.address,
+        chainId: reconnectResult.account.chainId,
+        connectorId: reconnectResult.account.connectorId,
+        label: reconnectResult.account.connectorLabel,
+      });
+
+      if (nextResult.changed) {
+        setSessionState(nextResult.state);
+      }
+
+      startWatchingSlot(slotId);
+
       return {
-        connected: false,
-        reason: 'failed',
+        connected: true,
+        reason: reconnectResult.reason,
       };
-    }
-  }
+    },
+    [startWatchingSlot, walletConnectEnabled],
+  );
 
-  function syncFromWagmiSession(): WalletStateResult {
-    return applyConnectedSession();
-  }
-
-  function setActiveSlot(slotId: string): WalletStateResult {
-    const nextResult = setActiveWalletSlot(sessionState, slotId);
+  const setActiveSlot = useCallback((slotId: string): WalletStateResult => {
+    const nextResult = setActiveWalletSlot(stateRef.current, slotId);
 
     if (nextResult.changed) {
       setSessionState(nextResult.state);
     }
 
     return nextResult;
-  }
+  }, []);
 
-  function disconnectSlot(slotId: string): WalletStateResult {
-    const slot = sessionState.slots.find((candidate) => candidate.id === slotId);
-    const nextResult = removeWalletSlot(sessionState, slotId);
+  const disconnectSlot = useCallback(
+    async (slotId: string): Promise<WalletStateResult> => {
+      const slot = stateRef.current.slots.find((candidate) => candidate.id === slotId);
 
-    if (!nextResult.changed) {
+      if (!slot) {
+        return {
+          state: stateRef.current,
+          changed: false,
+          reason: 'slot-not-found',
+        };
+      }
+
+      stopWatchingSlot(slotId);
+      await disconnectRuntimeSlot(slotId);
+
+      const nextResult = disconnectWalletSlot(stateRef.current, slotId);
+
+      if (nextResult.changed) {
+        setSessionState(nextResult.state);
+      }
+
       return nextResult;
-    }
+    },
+    [stopWatchingSlot],
+  );
 
-    setSessionState(nextResult.state);
+  const removeSlot = useCallback(
+    (slotId: string): WalletStateResult => {
+      stopWatchingSlot(slotId);
+      void clearRuntimeSlots([slotId]);
 
-    if (
-      slot &&
-      address &&
-      connector?.id &&
-      walletAddressesMatch(slot.address, address) &&
-      slot.connectorId === connector.id
-    ) {
-      void disconnectAsync().catch(() => undefined);
-    }
+      const nextResult = removeWalletSlot(stateRef.current, slotId);
 
-    return nextResult;
-  }
+      if (nextResult.changed) {
+        setSessionState(nextResult.state);
+      }
 
-  function replaceSlot(slotId: string): WalletStateResult {
-    const nextResult = disconnectSlot(slotId);
+      return nextResult;
+    },
+    [stopWatchingSlot],
+  );
 
-    if (nextResult.changed) {
-      void connectWallet();
-    }
+  const clearAllSlots = useCallback((): WalletStateResult => {
+    const slotIds = stateRef.current.slots.map((slot) => slot.id);
 
-    return nextResult;
-  }
+    stopWatchingAllSlots();
+    void clearRuntimeSlots(slotIds);
 
-  function clearAllSlots(): WalletStateResult {
     const nextResult = clearWalletSessionSlots();
-
     setSessionState(nextResult.state);
 
-    if (isConnected) {
-      void disconnectAsync().catch(() => undefined);
-    }
-
     return nextResult;
-  }
+  }, [stopWatchingAllSlots]);
 
-  const activeSlot = sessionState.slots.find((slot) => slot.id === sessionState.activeSlotId) ?? null;
+  const activeSlot = useMemo(
+    () => sessionState.slots.find((slot) => slot.id === sessionState.activeSlotId) ?? null,
+    [sessionState.activeSlotId, sessionState.slots],
+  );
 
   return (
     <WalletManagerContext.Provider
@@ -263,11 +477,13 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
         activeSlot,
         activeSlotId: sessionState.activeSlotId,
         canAddWallet: sessionState.slots.length < MAX_WALLET_SLOTS,
-        connectWallet,
-        syncFromWagmiSession,
+        hasHydrated,
+        getConnectorOptions,
+        connectNewSlot,
+        reconnectSlot,
         setActiveSlot,
         disconnectSlot,
-        replaceSlot,
+        removeSlot,
         clearAllSlots,
       }}
     >

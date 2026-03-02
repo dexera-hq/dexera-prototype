@@ -24,6 +24,8 @@ pnpm codegen
 pnpm check
 ```
 
+For WalletConnect support in `apps/web`, set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in `.env`.
+
 ## Root scripts
 
 - `pnpm dev`: start the Next.js web app only
