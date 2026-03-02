@@ -26,7 +26,8 @@ pnpm check
 
 ## Root scripts
 
-- `pnpm dev`: run all dev tasks in parallel (turbo)
+- `pnpm dev`: start the Next.js web app only
+- `pnpm dev:all`: run all dev tasks in parallel (turbo)
 - `pnpm dev:api:docker`: start Go API in Docker (deterministic reset on each startup)
 - `pnpm dev:api:docker:stubs`: start Go API + optional Redis/Postgres stubs
 - `pnpm dev:api:docker:down`: stop and remove Docker demo stack (including volumes)
