@@ -1,16 +1,16 @@
 'use client';
 
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
-  useEffectEvent,
   useRef,
   useState,
   type ReactNode,
 } from 'react';
-import { useConnectModal } from '@rainbow-me/rainbowkit';
-import { useAccount, useDisconnect } from 'wagmi';
+import { useAccount, useConnect, useDisconnect } from 'wagmi';
 
 import {
   MAX_WALLET_SLOTS,
@@ -27,7 +27,45 @@ import {
 } from './session-store';
 import type { ConnectWalletResult, WalletManagerApi, WalletSessionState, WalletStateResult } from './types';
 
-const WalletManagerContext = createContext<WalletManagerApi | null>(null);
+const fallbackState = createEmptyWalletSessionState();
+
+const fallbackWalletManager: WalletManagerApi = {
+  slots: fallbackState.slots,
+  activeSlot: null,
+  activeSlotId: fallbackState.activeSlotId,
+  canAddWallet: true,
+  connectWallet: () => ({
+    opened: false,
+    reason: 'unavailable',
+  }),
+  syncFromWagmiSession: () => ({
+    state: fallbackState,
+    changed: false,
+    reason: 'no-live-session',
+  }),
+  setActiveSlot: () => ({
+    state: fallbackState,
+    changed: false,
+    reason: 'unavailable',
+  }),
+  disconnectSlot: () => ({
+    state: fallbackState,
+    changed: false,
+    reason: 'unavailable',
+  }),
+  replaceSlot: () => ({
+    state: fallbackState,
+    changed: false,
+    reason: 'unavailable',
+  }),
+  clearAllSlots: () => ({
+    state: fallbackState,
+    changed: false,
+    reason: 'cleared',
+  }),
+};
+
+const WalletManagerContext = createContext<WalletManagerApi>(fallbackWalletManager);
 
 export function WalletManagerProvider({ children }: { children: ReactNode }) {
   const [sessionState, setSessionState] = useState<WalletSessionState>(createEmptyWalletSessionState);
@@ -35,8 +73,9 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
   const hasReconciledInitialSession = useRef(false);
 
   const { address, chainId, connector, isConnected, status } = useAccount();
-  const { disconnectAsync } = useDisconnect();
   const { openConnectModal } = useConnectModal();
+  const { connectAsync, connectors } = useConnect();
+  const { disconnectAsync } = useDisconnect();
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -47,7 +86,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
     setHasHydrated(true);
   }, []);
 
-  const persistSessionState = useEffectEvent((nextState: WalletSessionState) => {
+  const persistSessionState = useCallback((nextState: WalletSessionState) => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -58,9 +97,9 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
     }
 
     writeWalletSessionState(window.localStorage, nextState);
-  });
+  }, []);
 
-  const applyConnectedSession = useEffectEvent((): WalletStateResult => {
+  const applyConnectedSession = useCallback((): WalletStateResult => {
     if (!address || !chainId || !connector?.id) {
       return {
         state: sessionState,
@@ -83,9 +122,9 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
     hasReconciledInitialSession.current = true;
 
     return nextResult;
-  });
+  }, [address, chainId, connector?.id, connector?.name, sessionState]);
 
-  const reconcilePersistedSessions = useEffectEvent(() => {
+  const reconcilePersistedSessions = useCallback(() => {
     if (hasReconciledInitialSession.current) {
       return;
     }
@@ -106,7 +145,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
     }
 
     hasReconciledInitialSession.current = true;
-  });
+  }, [applyConnectedSession, sessionState, status]);
 
   useEffect(() => {
     if (!hasHydrated) {
@@ -133,14 +172,25 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
   }, [hasHydrated, isConnected, address, chainId, connector?.id, connector?.name]);
 
   function connectWallet(): ConnectWalletResult {
-    if (!openConnectModal) {
+    if (openConnectModal) {
+      openConnectModal();
+
+      return {
+        opened: true,
+        reason: 'opened',
+      };
+    }
+
+    const targetConnector = connectors.find((candidate) => candidate.id === 'walletConnect') ?? connectors[0];
+
+    if (!targetConnector) {
       return {
         opened: false,
         reason: 'unavailable',
       };
     }
 
-    openConnectModal();
+    void connectAsync({ connector: targetConnector }).catch(() => undefined);
 
     return {
       opened: true,
@@ -230,11 +280,5 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
 }
 
 export function useWalletManager(): WalletManagerApi {
-  const context = useContext(WalletManagerContext);
-
-  if (!context) {
-    throw new Error('useWalletManager must be used within WalletManagerProvider');
-  }
-
-  return context;
+  return useContext(WalletManagerContext);
 }
