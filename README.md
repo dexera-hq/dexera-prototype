@@ -27,11 +27,10 @@ pnpm check
 ## Root scripts
 
 - `pnpm dev`: run all dev tasks in parallel (turbo)
-- `pnpm dev:docker`: start frontend + backend in Docker (deterministic reset on each startup)
-- `pnpm dev:docker:stubs`: start frontend + backend + optional Redis/Postgres stubs
-- `pnpm dev:docker:down`: stop and remove Docker demo stack (including volumes)
-- `pnpm dev:docker:logs`: follow Docker demo stack logs
-- `pnpm dev:api:docker*`: compatibility aliases to the `dev:docker*` commands above
+- `pnpm dev:api:docker`: start Go API in Docker (deterministic reset on each startup)
+- `pnpm dev:api:docker:stubs`: start Go API + optional Redis/Postgres stubs
+- `pnpm dev:api:docker:down`: stop and remove Docker demo stack (including volumes)
+- `pnpm dev:api:docker:logs`: follow Docker demo stack logs
 - `pnpm build`: build all workspace packages/apps
 - `pnpm lint`: lint all workspace packages/apps
 - `pnpm typecheck`: typecheck all workspace packages/apps
@@ -43,25 +42,24 @@ pnpm check
 
 ## Local Docker demo
 
-One-command startup for reproducible frontend + backend demos:
+One-command startup for reproducible API demos:
 
 ```bash
-pnpm dev:docker
+pnpm dev:api:docker
 ```
 
 The launcher expects `.env`. If missing, it auto-creates `.env` from `.env.example`.
 
-Frontend and backend health:
+API health:
 
 ```bash
-curl http://localhost:3000
 curl http://localhost:8080/health
 ```
 
 Enable optional Redis/Postgres stubs:
 
 ```bash
-pnpm dev:docker:stubs
+pnpm dev:api:docker:stubs
 ```
 
 Stub connection details:
@@ -75,12 +73,12 @@ Stub connection details:
 Stop everything:
 
 ```bash
-pnpm dev:docker:down
+pnpm dev:api:docker:down
 ```
 
 Notes:
 
-- `pnpm dev:docker` resets stack state before startup (`down -v`) for deterministic demos.
+- `pnpm dev:api:docker` resets stack state before startup (`down -v`) for deterministic demos.
 - Redis/Postgres stubs are optional infrastructure placeholders. Current BFF endpoints do not require them yet.
 
 ## CI

@@ -54,18 +54,11 @@ case "$COMMAND" in
     echo "Resetting Docker dev stack to deterministic state..."
     down_all
     if [ "${STUBS:-0}" = "1" ]; then
-      echo "Starting frontend + backend with Redis/Postgres stubs..."
+      echo "Starting API with Redis/Postgres stubs..."
     else
-      echo "Starting frontend + backend..."
+      echo "Starting API only..."
     fi
-
-    echo "Building backend image..."
-    docker build -f "$ROOT_DIR/apps/bff-go/Dockerfile" -t dexera-dev-api "$ROOT_DIR"
-
-    echo "Building frontend image..."
-    docker build -f "$ROOT_DIR/apps/web/Dockerfile" -t dexera-dev-web "$ROOT_DIR"
-
-    run_compose_profiled up -d --no-build
+    run_compose_profiled up --build -d
     run_compose_profiled ps
     ;;
   down)
