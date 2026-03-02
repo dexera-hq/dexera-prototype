@@ -2,7 +2,6 @@ import type { ChainId } from './index.js';
 import type { Wallet } from './wallets.js';
 
 export type OrderSide = 'buy' | 'sell';
-export type OrderType = 'market' | 'limit';
 export type OrderStatus =
   | 'pending'
   | 'open'
@@ -32,6 +31,7 @@ export interface LimitOrderRequest extends BaseOrderRequest {
 }
 
 export type OrderRequest = MarketOrderRequest | LimitOrderRequest;
+export type OrderRequestType = OrderRequest['type'];
 
 interface BaseOrder extends Wallet {
   id: string;
@@ -58,6 +58,7 @@ export interface LimitOrder extends BaseOrder {
 }
 
 export type Order = MarketOrder | LimitOrder;
+export type OrderType = Order['type'];
 
 export interface Quote extends Wallet {
   id: string;
