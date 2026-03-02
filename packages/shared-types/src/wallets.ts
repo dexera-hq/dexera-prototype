@@ -1,7 +1,7 @@
 import type { ChainId } from './index.js';
 
 export interface Wallet {
-  address: string;
+  walletAddress: string;
   chainId: ChainId;
 }
 

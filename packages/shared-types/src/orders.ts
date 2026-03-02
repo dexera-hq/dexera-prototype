@@ -1,4 +1,5 @@
 import type { ChainId } from './index.js';
+import type { Wallet } from './wallets.js';
 
 export type OrderSide = 'buy' | 'sell';
 export type OrderType = 'market' | 'limit';
@@ -13,9 +14,7 @@ export type QuoteStatus = 'fresh' | 'stale' | 'expired';
 export type TxPayloadKind = 'evm_transaction';
 export type FillLiquidity = 'maker' | 'taker';
 
-interface BaseOrderRequest {
-  walletAddress: string;
-  chainId: ChainId;
+interface BaseOrderRequest extends Wallet {
   symbol: string;
   side: OrderSide;
   quantity: string;
@@ -34,15 +33,11 @@ export interface LimitOrderRequest extends BaseOrderRequest {
 
 export type OrderRequest = MarketOrderRequest | LimitOrderRequest;
 
-export interface Order {
+interface BaseOrder extends Wallet {
   id: string;
-  walletAddress: string;
-  chainId: ChainId;
   symbol: string;
   side: OrderSide;
-  type: OrderType;
   quantity: string;
-  limitPrice?: string;
   status: OrderStatus;
   filledQuantity: string;
   averageFillPrice?: string;
@@ -52,10 +47,20 @@ export interface Order {
   unsignedTxPayloadId?: string;
 }
 
-export interface Quote {
+export interface MarketOrder extends BaseOrder {
+  type: 'market';
+  limitPrice?: never;
+}
+
+export interface LimitOrder extends BaseOrder {
+  type: 'limit';
+  limitPrice: string;
+}
+
+export type Order = MarketOrder | LimitOrder;
+
+export interface Quote extends Wallet {
   id: string;
-  walletAddress: string;
-  chainId: ChainId;
   symbol: string;
   side: OrderSide;
   quantity: string;
@@ -80,11 +85,9 @@ export interface UnsignedTxPayload {
   nonce?: number;
 }
 
-export interface Fill {
+export interface Fill extends Wallet {
   id: string;
   orderId: string;
-  walletAddress: string;
-  chainId: ChainId;
   symbol: string;
   side: OrderSide;
   quantity: string;

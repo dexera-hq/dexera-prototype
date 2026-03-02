@@ -1,4 +1,5 @@
 import type { ChainId } from './index.js';
+import type { Wallet } from './wallets.js';
 
 export type PositionSide = 'long' | 'short';
 export type PositionStatus = 'open' | 'closed' | 'liquidated';
@@ -11,10 +12,8 @@ export interface PositionPnlPlaceholder {
   asOf: string;
 }
 
-export interface Position {
+export interface Position extends Wallet {
   id: string;
-  walletAddress: string;
-  chainId: ChainId;
   symbol: string;
   side: PositionSide;
   status: PositionStatus;
