@@ -1,4 +1,6 @@
 export type ChainId = number;
+export * from './orders';
+export * from './positions';
 
 export interface DexeraHealthStatus {
   status: 'ok' | 'degraded' | 'down';
