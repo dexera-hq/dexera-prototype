@@ -12,12 +12,91 @@ import {
   moveModule,
   pushModuleToEnd,
 } from '@/components/workspace/logic';
-import type { WorkspaceModule } from '@/components/workspace/types';
+import { MODULE_KINDS, MODULE_SIZES, type WorkspaceModule } from '@/components/workspace/types';
 
 const WORKSPACE_LAYOUT_STORAGE_KEY = 'dexera-prototype.workspace-layout.v1';
 
 function getNextModuleId(modules: WorkspaceModule[]): number {
   return modules.reduce((maxId, module) => Math.max(maxId, module.id), 0) + 1;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) > 0;
+}
+
+function isModuleKind(value: unknown): value is (typeof MODULE_KINDS)[number] {
+  return typeof value === 'string' && MODULE_KINDS.includes(value as (typeof MODULE_KINDS)[number]);
+}
+
+function isModuleSize(value: unknown): value is (typeof MODULE_SIZES)[number] {
+  return typeof value === 'string' && MODULE_SIZES.includes(value as (typeof MODULE_SIZES)[number]);
+}
+
+function hasUniqueModuleIds(modules: WorkspaceModule[]): boolean {
+  const moduleIds = new Set<number>();
+  for (const moduleItem of modules) {
+    if (moduleIds.has(moduleItem.id)) {
+      return false;
+    }
+    moduleIds.add(moduleItem.id);
+  }
+  return true;
+}
+
+function parseLegacyPersistedLayout(rawValue: string): { modules: WorkspaceModule[]; nextModuleId: number } | null {
+  let parsedValue: unknown;
+  try {
+    parsedValue = JSON.parse(rawValue);
+  } catch {
+    return null;
+  }
+
+  if (!isRecord(parsedValue)) {
+    return null;
+  }
+
+  const modulesValue = parsedValue.modules;
+  if (!Array.isArray(modulesValue)) {
+    return null;
+  }
+
+  const modules: WorkspaceModule[] = [];
+  for (const item of modulesValue) {
+    if (!isRecord(item)) {
+      return null;
+    }
+
+    if (!isPositiveInteger(item.id) || typeof item.label !== 'string') {
+      return null;
+    }
+
+    if (!isModuleKind(item.kind) || !isModuleSize(item.size)) {
+      return null;
+    }
+
+    modules.push({
+      id: item.id,
+      kind: item.kind,
+      label: item.label,
+      size: item.size,
+      config: {},
+    });
+  }
+
+  if (!hasUniqueModuleIds(modules)) {
+    return null;
+  }
+
+  const minimumNextModuleId = getNextModuleId(modules);
+  const nextModuleId = isPositiveInteger(parsedValue.nextModuleId)
+    ? Math.max(parsedValue.nextModuleId, minimumNextModuleId)
+    : minimumNextModuleId;
+
+  return { modules, nextModuleId };
 }
 
 function loadPersistedLayout(): { modules: WorkspaceModule[]; nextModuleId: number } | null {
@@ -28,10 +107,22 @@ function loadPersistedLayout(): { modules: WorkspaceModule[]; nextModuleId: numb
   try {
     const storage = window.localStorage;
     const rawValue = storage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY);
-    if (!rawValue) {
+    if (rawValue === null) {
       return null;
     }
-    return deserializeWorkspaceLayout(rawValue);
+
+    const deterministicLayout = deserializeWorkspaceLayout(rawValue);
+    if (deterministicLayout) {
+      return deterministicLayout;
+    }
+
+    const legacyLayout = parseLegacyPersistedLayout(rawValue);
+    if (legacyLayout) {
+      return legacyLayout;
+    }
+
+    storage.removeItem(WORKSPACE_LAYOUT_STORAGE_KEY);
+    return null;
   } catch {
     return null;
   }
@@ -46,7 +137,7 @@ export function useWorkspaceModules() {
 
   useEffect(() => {
     const storedLayout = loadPersistedLayout();
-    if (storedLayout) {
+    if (storedLayout !== null) {
       setModules(storedLayout.modules);
       setNextModuleId(storedLayout.nextModuleId);
     }
