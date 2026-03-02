@@ -1,4 +1,5 @@
-import type { HexChainId, TargetChainConfig } from './types';
+import { numberToHex } from 'viem';
+import type { HexChainId } from './types';
 
 const KNOWN_CHAIN_NAMES: Record<number, string> = {
   1: 'Ethereum Mainnet',
@@ -24,51 +25,41 @@ export function shortenAddress(address: string | null, visibleCharacters = 4): s
   return `${address.slice(0, prefixLength)}...${address.slice(-visibleCharacters)}`;
 }
 
-export function hexChainIdToDecimal(chainIdHex: HexChainId | null): number | null {
+export function chainIdToHex(chainId: number | null): HexChainId | null {
+  if (chainId == null) {
+    return null;
+  }
+
+  return numberToHex(chainId) as HexChainId;
+}
+
+export function getChainName(chainId: number | null): string | null {
+  if (chainId == null) {
+    return null;
+  }
+
+  return KNOWN_CHAIN_NAMES[chainId] ?? 'Unknown EVM Chain';
+}
+
+export function matchesTargetChain(chainId: number | null, targetChainId: number): boolean | null {
+  if (chainId == null) {
+    return null;
+  }
+
+  return chainId === targetChainId;
+}
+
+export function formatChainLabel(chainName: string | null, chainId: number | null): string {
+  if (chainId == null) {
+    return 'Unavailable';
+  }
+
+  const chainIdHex = chainIdToHex(chainId);
+
   if (!chainIdHex) {
-    return null;
-  }
-
-  const parsed = Number.parseInt(chainIdHex, 16);
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
-export function getChainName(chainIdDecimal: number | null): string | null {
-  if (chainIdDecimal == null) {
-    return null;
-  }
-
-  return KNOWN_CHAIN_NAMES[chainIdDecimal] ?? 'Unknown EVM Chain';
-}
-
-export function matchesTargetChain(
-  chainIdHex: HexChainId | null,
-  targetChain: TargetChainConfig,
-): boolean | null {
-  if (!chainIdHex) {
-    return null;
-  }
-
-  if (targetChain.chainIdHex) {
-    return chainIdHex.toLowerCase() === targetChain.chainIdHex.toLowerCase();
-  }
-
-  if (targetChain.chainIdDecimal != null) {
-    return hexChainIdToDecimal(chainIdHex) === targetChain.chainIdDecimal;
-  }
-
-  return null;
-}
-
-export function formatChainLabel(
-  chainName: string | null,
-  chainIdHex: HexChainId | null,
-  chainIdDecimal: number | null,
-): string {
-  if (!chainIdHex || chainIdDecimal == null) {
     return 'Unavailable';
   }
 
   const resolvedName = chainName ?? 'Unknown EVM Chain';
-  return `${resolvedName} (${chainIdHex} / ${chainIdDecimal})`;
+  return `${resolvedName} (${chainIdHex} / ${chainId})`;
 }

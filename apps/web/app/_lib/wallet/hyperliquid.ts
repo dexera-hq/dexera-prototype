@@ -2,8 +2,9 @@ import type { TargetChainConfig } from './types';
 
 export const HYPERLIQUID_TARGET_CHAIN: TargetChainConfig = {
   name: 'HyperEVM',
+  chainId: 999,
   chainIdHex: '0x3e7',
-  chainIdDecimal: 999,
+  rpcUrl: 'https://rpc.hyperliquid.xyz/evm',
 };
 
 export const HYPERLIQUID_TARGET_NOTE =

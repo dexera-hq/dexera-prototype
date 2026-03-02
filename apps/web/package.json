@@ -17,9 +17,13 @@
   "dependencies": {
     "@dexera/api-types": "workspace:*",
     "@dexera/shared-types": "workspace:*",
+    "@tanstack/react-query": "^5.0.0",
+    "@walletconnect/ethereum-provider": "^2.0.0",
     "next": "^15.5.2",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "viem": "^2.0.0",
+    "wagmi": "^2.0.0"
   },
   "devDependencies": {
     "@dexera/eslint-config": "workspace:*",
