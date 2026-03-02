@@ -292,44 +292,51 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
       }
 
       const slotId = createEphemeralSlotId();
-      const connectResult = await connectRuntimeSlot(slotId, connectorId);
+      let shouldClearRuntime = true;
 
-      if (
-        !connectResult.connected ||
-        !connectResult.account?.address ||
-        !connectResult.account.chainId ||
-        !connectResult.account.connectorId
-      ) {
+      try {
+        const connectResult = await connectRuntimeSlot(slotId, connectorId);
+
+        if (
+          !connectResult.connected ||
+          !connectResult.account?.address ||
+          !connectResult.account.chainId ||
+          !connectResult.account.connectorId
+        ) {
+          return {
+            connected: false,
+            reason: connectResult.reason,
+          };
+        }
+
+        const nextResult = upsertConnectedWallet(stateRef.current, {
+          slotId,
+          address: connectResult.account.address,
+          chainId: connectResult.account.chainId,
+          connectorId: connectResult.account.connectorId,
+          label: connectResult.account.connectorLabel,
+        });
+
+        if (!nextResult.changed) {
+          return {
+            connected: false,
+            reason: nextResult.reason === 'slots-full' ? 'unavailable' : 'failed',
+          };
+        }
+
+        setSessionState(nextResult.state);
+        startWatchingSlot(slotId);
+        shouldClearRuntime = false;
+
         return {
-          connected: false,
+          connected: true,
           reason: connectResult.reason,
         };
+      } finally {
+        if (shouldClearRuntime) {
+          await clearRuntimeSlots([slotId]);
+        }
       }
-
-      const nextResult = upsertConnectedWallet(stateRef.current, {
-        slotId,
-        address: connectResult.account.address,
-        chainId: connectResult.account.chainId,
-        connectorId: connectResult.account.connectorId,
-        label: connectResult.account.connectorLabel,
-      });
-
-      if (!nextResult.changed) {
-        await clearRuntimeSlots([slotId]);
-
-        return {
-          connected: false,
-          reason: nextResult.reason === 'slots-full' ? 'unavailable' : 'failed',
-        };
-      }
-
-      setSessionState(nextResult.state);
-      startWatchingSlot(slotId);
-
-      return {
-        connected: true,
-        reason: connectResult.reason,
-      };
     },
     [hasHydrated, startWatchingSlot, walletConnectEnabled],
   );
