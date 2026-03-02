@@ -44,12 +44,12 @@ function loadPersistedModules(): WorkspaceModule[] | null {
     return null;
   }
 
-  const rawValue = window.localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY);
-  if (!rawValue) {
-    return null;
-  }
-
   try {
+    const storage = window.localStorage;
+    const rawValue = storage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY);
+    if (!rawValue) {
+      return null;
+    }
     const parsedValue = JSON.parse(rawValue) as unknown;
     if (!parsedValue || typeof parsedValue !== 'object') {
       return null;
