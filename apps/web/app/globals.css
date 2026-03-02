@@ -100,6 +100,42 @@ body {
   gap: 0.55rem;
 }
 
+.wallet-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.wallet-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 36px;
+  padding: 0.52rem 0.8rem;
+  border: 1px solid #2d3a4d;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #181f2c, #121821);
+  color: #c9d5ea;
+  white-space: nowrap;
+}
+
+.wallet-summary-address {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.wallet-summary-chain {
+  color: var(--text-soft);
+}
+
+.wallet-summary-count {
+  padding-left: 0.55rem;
+  border-left: 1px solid #222b3a;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .ui-button {
   display: inline-flex;
   align-items: center;
@@ -569,10 +605,20 @@ body {
     align-items: flex-start;
   }
 
-  .workspace-controls,
-  .topbar-actions {
+  .workspace-controls {
     width: 100%;
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .topbar-actions,
+  .wallet-controls {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .wallet-summary {
+    width: 100%;
+    justify-content: space-between;
   }
 }

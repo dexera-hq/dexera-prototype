@@ -158,20 +158,20 @@ function parsePositiveInteger(value: unknown): number | null {
 
 function parseConfigObject(value: unknown): WorkspaceModuleConfig | null {
   if (!isRecord(value)) return null;
-  const normalizedValue = normalizeConfigValue(value);
+  const normalizedValue = normalizeConfigValueStrict(value);
   if (!isConfigObject(normalizedValue)) return null;
   return normalizedValue;
 }
 
 function sortConfigObject(value: WorkspaceModuleConfig): WorkspaceModuleConfig {
-  const normalizedValue = normalizeConfigValue(value);
+  const normalizedValue = normalizeConfigValueLenient(value);
   if (!isConfigObject(normalizedValue)) {
     return {};
   }
   return normalizedValue;
 }
 
-function normalizeConfigValue(value: unknown): WorkspaceConfigValue | undefined {
+function normalizeConfigValueStrict(value: unknown): WorkspaceConfigValue | undefined {
   if (value === null) return null;
 
   if (typeof value === 'string' || typeof value === 'boolean') return value;
@@ -180,7 +180,7 @@ function normalizeConfigValue(value: unknown): WorkspaceConfigValue | undefined 
   if (Array.isArray(value)) {
     const normalizedArray: WorkspaceConfigValue[] = [];
     for (const item of value) {
-      const normalizedItem = normalizeConfigValue(item);
+      const normalizedItem = normalizeConfigValueStrict(item);
       if (normalizedItem === undefined) return undefined;
       normalizedArray.push(normalizedItem);
     }
@@ -190,13 +190,50 @@ function normalizeConfigValue(value: unknown): WorkspaceConfigValue | undefined 
   if (!isRecord(value)) return undefined;
 
   const normalizedObject: WorkspaceModuleConfig = {};
-  const sortedEntries = Object.entries(value).sort(([left], [right]) => left.localeCompare(right));
+  const sortedEntries = Object.entries(value).sort(([left], [right]) =>
+    compareConfigKeys(left, right),
+  );
   for (const [key, entryValue] of sortedEntries) {
-    const normalizedEntryValue = normalizeConfigValue(entryValue);
+    const normalizedEntryValue = normalizeConfigValueStrict(entryValue);
     if (normalizedEntryValue === undefined) return undefined;
     normalizedObject[key] = normalizedEntryValue;
   }
   return normalizedObject;
+}
+
+function normalizeConfigValueLenient(value: unknown): WorkspaceConfigValue | undefined {
+  if (value === null) return null;
+
+  if (typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+
+  if (Array.isArray(value)) {
+    const normalizedArray: WorkspaceConfigValue[] = [];
+    for (const item of value) {
+      const normalizedItem = normalizeConfigValueLenient(item);
+      if (normalizedItem === undefined) continue;
+      normalizedArray.push(normalizedItem);
+    }
+    return normalizedArray;
+  }
+
+  if (!isRecord(value)) return undefined;
+
+  const normalizedObject: WorkspaceModuleConfig = {};
+  const sortedEntries = Object.entries(value).sort(([left], [right]) =>
+    compareConfigKeys(left, right),
+  );
+  for (const [key, entryValue] of sortedEntries) {
+    const normalizedEntryValue = normalizeConfigValueLenient(entryValue);
+    if (normalizedEntryValue === undefined) continue;
+    normalizedObject[key] = normalizedEntryValue;
+  }
+  return normalizedObject;
+}
+
+function compareConfigKeys(left: string, right: string): number {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }
 
 function computeNextModuleId(modules: WorkspaceModule[]): number {

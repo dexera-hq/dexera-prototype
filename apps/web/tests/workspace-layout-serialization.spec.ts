@@ -91,4 +91,67 @@ describe('workspace layout serialization', () => {
     expect(deserializeWorkspaceLayout('not-json')).toBeNull();
     expect(deserializeWorkspaceLayout(JSON.stringify({ version: 2 }))).toBeNull();
   });
+
+  it('sorts config keys without locale-dependent collation', () => {
+    const originalLocaleCompare = String.prototype.localeCompare;
+    String.prototype.localeCompare = (() => {
+      throw new Error('localeCompare should not be used for serialization ordering');
+    }) as typeof String.prototype.localeCompare;
+
+    try {
+      const serialized = serializeWorkspaceLayout({
+        nextModuleId: 2,
+        modules: [
+          {
+            id: 1,
+            kind: 'overview',
+            label: 'Overview',
+            size: 'full',
+            config: { b: 2, a: 1 },
+          },
+        ],
+      });
+
+      expect(serialized).toContain('"config":{"a":1,"b":2}');
+    } finally {
+      String.prototype.localeCompare = originalLocaleCompare;
+    }
+  });
+
+  it('preserves valid config branches when runtime values are invalid', () => {
+    const serialized = serializeWorkspaceLayout({
+      nextModuleId: 2,
+      modules: [
+        {
+          id: 1,
+          kind: 'custom',
+          label: 'Custom',
+          size: 'normal',
+          config: {
+            keep: 'ok',
+            invalidTopLevel: Number.POSITIVE_INFINITY,
+            list: [1, Number.NaN, { keepNested: false, invalidNested: Number.NEGATIVE_INFINITY }],
+            nested: {
+              keepNumber: 1,
+              invalidNumber: Number.NaN,
+              deeper: {
+                keepBool: true,
+                invalidBool: Number.POSITIVE_INFINITY,
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const parsed = JSON.parse(serialized) as { blocks: Array<{ config: unknown }> };
+    expect(parsed.blocks[0]?.config).toEqual({
+      keep: 'ok',
+      list: [1, { keepNested: false }],
+      nested: {
+        deeper: { keepBool: true },
+        keepNumber: 1,
+      },
+    });
+  });
 });
