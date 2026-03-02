@@ -277,10 +277,10 @@ export function markAllWalletSlots(state: WalletSessionState, status: WalletSlot
 
   return buildResult(
     {
-      slots: state.slots.map((slot) => ({
+      slots: state.slots.map<WalletSlot>((slot) => ({
         ...slot,
         status,
-      })) as WalletSlot[],
+      })),
       activeSlotId: state.activeSlotId,
     },
     true,
