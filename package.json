@@ -10,6 +10,10 @@
   },
   "scripts": {
     "dev": "turbo run dev --parallel",
+    "dev:api:docker": "sh ./scripts/dev-api-compose.sh",
+    "dev:api:docker:stubs": "STUBS=1 sh ./scripts/dev-api-compose.sh",
+    "dev:api:docker:down": "CMD=down sh ./scripts/dev-api-compose.sh",
+    "dev:api:docker:logs": "CMD=logs sh ./scripts/dev-api-compose.sh",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "format": "prettier --write .",

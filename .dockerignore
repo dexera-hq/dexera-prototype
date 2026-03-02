@@ -1,0 +1,15 @@
+.git
+.github
+node_modules
+.pnpm-store
+.turbo
+target
+coverage
+playwright-report
+
+**/.cache
+**/.turbo
+**/.next
+**/dist
+**/*.tsbuildinfo
+apps/bff-go/bff
