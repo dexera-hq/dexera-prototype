@@ -173,6 +173,7 @@ test('keeps Dexera disconnected after an app-level disconnect until connect is c
 
   await page.goto('/');
 
+  await page.getByRole('button', { name: 'Connect Injected Wallet' }).click();
   await expect(page.getByRole('button', { name: 'Disconnect' })).toBeVisible();
   await page.getByRole('button', { name: 'Disconnect' }).click();
 

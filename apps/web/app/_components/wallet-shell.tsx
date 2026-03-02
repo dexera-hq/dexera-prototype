@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Compass, Link2, ShieldCheck, Wallet2 } from 'lucide-react';
 import {
   useAccount,
   useChainId,
@@ -9,6 +10,11 @@ import {
   useDisconnect,
   useSwitchChain,
 } from 'wagmi';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 import {
   INJECTED_CONNECTOR_ID,
   isWalletConnectConfigured,
@@ -42,20 +48,17 @@ function getStatusLabel(status: WalletStatus): string {
   }
 }
 
-function getStatusTone(status: WalletStatus): string {
+function getStatusToneClass(status: WalletStatus): string {
   switch (status) {
-    case 'unsupported':
-      return 'unsupported';
-    case 'disconnected':
-      return 'neutral';
-    case 'connecting':
-      return 'pending';
     case 'connected':
-      return 'success';
+      return 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100';
+    case 'connecting':
+      return 'border-amber-300/30 bg-amber-300/10 text-amber-100';
     case 'error':
-      return 'error';
+    case 'unsupported':
+      return 'border-rose-300/30 bg-rose-300/10 text-rose-100';
     default:
-      return 'neutral';
+      return 'border-border bg-background/45 text-muted-foreground';
   }
 }
 
@@ -309,136 +312,204 @@ export function WalletShell() {
     !walletConnectConnector;
 
   return (
-    <section className="panel wallet-shell">
-      <p className="panel-kicker">Wallet Shell</p>
-      <div className="wallet-head">
-        <div>
-          <h1>Connect a wallet without leaving your custody.</h1>
-          <p className="panel-intro">
-            Dexera uses wagmi and viem for non-custodial wallet connectivity. It only reads your
-            public address and chain context while Hyperliquid trading remains disabled.
+    <section
+      id="wallet-shell"
+      aria-labelledby="wallet-shell-title"
+      className="relative overflow-hidden rounded-[2rem] border border-border/70 bg-card/75 p-6 shadow-panel backdrop-blur-xl sm:p-8"
+    >
+      <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
+
+      <div className="relative space-y-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-4">
+            <Badge variant="outline" className="w-fit">
+              Wallet shell
+            </Badge>
+            <div className="space-y-3">
+              <h2 id="wallet-shell-title" className="text-3xl sm:text-4xl">
+                Connect a wallet without leaving your custody.
+              </h2>
+              <p className="max-w-2xl text-base leading-7 text-muted-foreground">
+                Dexera uses wagmi and viem for non-custodial wallet connectivity. It only reads your
+                public address and chain context while Hyperliquid trading remains disabled.
+              </p>
+            </div>
+          </div>
+
+          <Badge
+            variant="outline"
+            className={cn(
+              'w-fit px-4 py-2 text-[0.68rem] tracking-[0.26em]',
+              getStatusToneClass(walletStatus),
+            )}
+          >
+            {getStatusLabel(walletStatus)}
+          </Badge>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="border-border/60 bg-background/60 shadow-none">
+            <CardHeader className="gap-4 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <Badge variant="secondary">Connectors</Badge>
+                <Link2 className="h-4 w-4 text-primary" />
+              </div>
+              <CardTitle className="text-xl">
+                {walletState.connectorName ??
+                  (walletState.connectorReady
+                    ? 'Dexera connectors ready'
+                    : 'No connector available')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5 pt-0">
+              <CardDescription className="leading-7">
+                {getConnectorCopy(walletState, hasInjectedProvider)}
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/60 bg-background/60 shadow-none">
+            <CardHeader className="gap-4 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <Badge variant="secondary">Address</Badge>
+                <Wallet2 className="h-4 w-4 text-primary" />
+              </div>
+              <CardTitle className="text-xl" title={walletState.address ?? undefined}>
+                {shortenAddress(walletState.address)}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5 pt-0">
+              <CardDescription className="leading-7">
+                {walletState.address
+                  ? 'Primary account exposed by the active connector.'
+                  : 'The first authorized account will appear here after connection.'}
+              </CardDescription>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/60 bg-background/60 shadow-none">
+            <CardHeader className="gap-4 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <Badge variant="secondary">Chain</Badge>
+                <Compass className="h-4 w-4 text-primary" />
+              </div>
+              <CardTitle className="text-xl">{chainLabel}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 p-5 pt-0">
+              <CardDescription className="leading-7">
+                {walletState.chainId
+                  ? 'Chain context is derived from the active wagmi connection.'
+                  : 'Chain metadata appears after the first successful connection.'}
+              </CardDescription>
+              {walletState.chainIdHex ? (
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                  {walletState.chainIdHex}
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/60 bg-background/60 shadow-none">
+            <CardHeader className="gap-4 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <Badge variant="secondary">Hyperliquid target</Badge>
+                <ShieldCheck className="h-4 w-4 text-primary" />
+              </div>
+              <CardTitle className="text-xl">{HYPERLIQUID_TARGET_CHAIN.name}</CardTitle>
+            </CardHeader>
+            <CardContent className="p-5 pt-0">
+              <CardDescription
+                className={cn('leading-7', walletState.isTargetChain === false && 'text-amber-100')}
+              >
+                {targetCopy}
+              </CardDescription>
+            </CardContent>
+          </Card>
+        </div>
+
+        {walletState.errorMessage ? (
+          <div className="flex gap-3 rounded-[1.5rem] border border-rose-300/20 bg-rose-300/10 p-4 text-rose-100">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+            <p className="text-sm leading-7">{walletState.errorMessage}</p>
+          </div>
+        ) : (
+          <div className="rounded-[1.5rem] border border-border/60 bg-background/45 p-4">
+            <p className="text-sm leading-7 text-muted-foreground">
+              Non-custodial by design. Dexera does not custody funds, request signatures, or place
+              trades in this shell.
+            </p>
+          </div>
+        )}
+
+        <div className="rounded-[1.5rem] border border-border/60 bg-background/45 p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+            {walletState.status !== 'connected' ? (
+              <>
+                <Button
+                  type="button"
+                  size="lg"
+                  disabled={injectedDisabled}
+                  onClick={() => {
+                    void handleConnect(INJECTED_CONNECTOR_ID);
+                  }}
+                >
+                  {connect.isPending && pendingConnectorId === INJECTED_CONNECTOR_ID
+                    ? 'Connecting Injected Wallet...'
+                    : 'Connect Injected Wallet'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  disabled={walletConnectDisabled}
+                  onClick={() => {
+                    void handleConnect(WALLETCONNECT_CONNECTOR_ID);
+                  }}
+                >
+                  {connect.isPending && pendingConnectorId === WALLETCONNECT_CONNECTOR_ID
+                    ? 'Opening WalletConnect...'
+                    : isWalletConnectConfigured
+                      ? 'Connect with WalletConnect'
+                      : 'WalletConnect Unavailable'}
+                </Button>
+              </>
+            ) : (
+              <>
+                {showSwitchAction ? (
+                  <Button
+                    type="button"
+                    size="lg"
+                    disabled={switchChain.isPending}
+                    onClick={() => {
+                      void handleSwitchChain();
+                    }}
+                  >
+                    {switchChain.isPending &&
+                    switchChain.variables?.chainId === HYPERLIQUID_TARGET_CHAIN.chainId
+                      ? 'Switching to HyperEVM...'
+                      : 'Switch to HyperEVM'}
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  size="lg"
+                  variant={showSwitchAction ? 'outline' : 'secondary'}
+                  onClick={handleDisconnect}
+                >
+                  Disconnect
+                </Button>
+              </>
+            )}
+          </div>
+
+          <Separator className="my-5" />
+
+          <p className="text-sm leading-7 text-muted-foreground">
+            {isWalletConnectConfigured
+              ? 'Injected wallets and WalletConnect remain fully non-custodial. Dexera only controls its local session.'
+              : 'Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID to enable WalletConnect. Dexera only controls its local session.'}
           </p>
         </div>
-        <span className={`status-pill tone-${getStatusTone(walletStatus)}`}>
-          {getStatusLabel(walletStatus)}
-        </span>
-      </div>
-
-      <div className="wallet-grid">
-        <article className="wallet-card">
-          <span className="wallet-label">Connectors</span>
-          <strong className="wallet-value">
-            {walletState.connectorName ??
-              (walletState.connectorReady ? 'Dexera connectors ready' : 'No connector available')}
-          </strong>
-          <p className="wallet-copy">{getConnectorCopy(walletState, hasInjectedProvider)}</p>
-        </article>
-
-        <article className="wallet-card">
-          <span className="wallet-label">Address</span>
-          <strong className="wallet-value" title={walletState.address ?? undefined}>
-            {shortenAddress(walletState.address)}
-          </strong>
-          <p className="wallet-copy">
-            {walletState.address
-              ? 'Primary account exposed by the active connector.'
-              : 'The first authorized account will appear here after connection.'}
-          </p>
-        </article>
-
-        <article className="wallet-card">
-          <span className="wallet-label">Chain</span>
-          <strong className="wallet-value">{chainLabel}</strong>
-          <p className="wallet-copy">
-            {walletState.chainId
-              ? 'Chain context is derived from the active wagmi connection.'
-              : 'Chain metadata appears after the first successful connection.'}
-          </p>
-        </article>
-
-        <article className="wallet-card">
-          <span className="wallet-label">Hyperliquid target</span>
-          <strong className="wallet-value">{HYPERLIQUID_TARGET_CHAIN.name}</strong>
-          <p
-            className={`wallet-copy${walletState.isTargetChain === false ? ' wallet-warning' : ''}`}
-          >
-            {targetCopy}
-          </p>
-        </article>
-      </div>
-
-      {walletState.errorMessage ? (
-        <p className="wallet-alert" role="alert">
-          {walletState.errorMessage}
-        </p>
-      ) : (
-        <p className="wallet-note">
-          Non-custodial by design. Dexera does not custody funds, request signatures, or place
-          trades in this shell.
-        </p>
-      )}
-
-      <div className="wallet-actions">
-        {walletState.status !== 'connected' ? (
-          <>
-            <button
-              type="button"
-              className="action-button"
-              disabled={injectedDisabled}
-              onClick={() => {
-                void handleConnect(INJECTED_CONNECTOR_ID);
-              }}
-            >
-              {connect.isPending && pendingConnectorId === INJECTED_CONNECTOR_ID
-                ? 'Connecting Injected Wallet...'
-                : 'Connect Injected Wallet'}
-            </button>
-            <button
-              type="button"
-              className="action-button action-button-ghost"
-              disabled={walletConnectDisabled}
-              onClick={() => {
-                void handleConnect(WALLETCONNECT_CONNECTOR_ID);
-              }}
-            >
-              {connect.isPending && pendingConnectorId === WALLETCONNECT_CONNECTOR_ID
-                ? 'Opening WalletConnect...'
-                : isWalletConnectConfigured
-                  ? 'Connect with WalletConnect'
-                  : 'WalletConnect Unavailable'}
-            </button>
-          </>
-        ) : (
-          <>
-            {showSwitchAction ? (
-              <button
-                type="button"
-                className="action-button"
-                disabled={switchChain.isPending}
-                onClick={() => {
-                  void handleSwitchChain();
-                }}
-              >
-                {switchChain.isPending &&
-                switchChain.variables?.chainId === HYPERLIQUID_TARGET_CHAIN.chainId
-                  ? 'Switching to HyperEVM...'
-                  : 'Switch to HyperEVM'}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={`action-button${showSwitchAction ? ' action-button-ghost' : ''}`}
-              onClick={handleDisconnect}
-            >
-              Disconnect
-            </button>
-          </>
-        )}
-        <span className="action-note">
-          {isWalletConnectConfigured
-            ? 'Injected wallets and WalletConnect remain fully non-custodial. Dexera only controls its local session.'
-            : 'Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID to enable WalletConnect. Dexera only controls its local session.'}
-        </span>
       </div>
     </section>
   );
