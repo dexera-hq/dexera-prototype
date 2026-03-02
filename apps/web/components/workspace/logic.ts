@@ -1,11 +1,11 @@
 import type { WorkspaceModule } from '@/components/workspace/types';
 
 export const initialModules: WorkspaceModule[] = [
-  { id: 1, kind: 'overview', label: 'Market Overview', size: 'full' },
-  { id: 2, kind: 'chart', label: 'Price Chart', size: 'wide' },
-  { id: 3, kind: 'trade', label: 'Trade Panel', size: 'normal' },
-  { id: 4, kind: 'orderbook', label: 'Order Book', size: 'normal' },
-  { id: 5, kind: 'positions', label: 'Open Positions', size: 'wide' },
+  { id: 1, kind: 'overview', label: 'Market Overview', size: 'full', config: {} },
+  { id: 2, kind: 'chart', label: 'Price Chart', size: 'wide', config: {} },
+  { id: 3, kind: 'trade', label: 'Trade Panel', size: 'normal', config: {} },
+  { id: 4, kind: 'orderbook', label: 'Order Book', size: 'normal', config: {} },
+  { id: 5, kind: 'positions', label: 'Open Positions', size: 'wide', config: {} },
 ];
 
 export function moveModule(
@@ -37,6 +37,5 @@ export function pushModuleToEnd(modules: WorkspaceModule[], sourceId: number): W
 }
 
 export function createCustomModule(id: number): WorkspaceModule {
-  return { id, kind: 'custom', label: `Custom Widget ${id}`, size: 'normal' };
+  return { id, kind: 'custom', label: `Custom Widget ${id}`, size: 'normal', config: {} };
 }
-
