@@ -89,3 +89,7 @@ GitHub Actions workflow at `.github/workflows/ci.yml` runs:
 - Go format/vet/test
 - Rust fmt/clippy/test
 - Contract validation and generation drift checks
+
+## Frontend docs
+
+- Workspace layout persistence: `docs/layout-persistence.md`

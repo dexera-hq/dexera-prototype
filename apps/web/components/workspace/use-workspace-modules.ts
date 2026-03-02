@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { DragEvent } from 'react';
 import {
   createCustomModule,
@@ -10,11 +10,93 @@ import {
 } from '@/components/workspace/logic';
 import type { WorkspaceModule } from '@/components/workspace/types';
 
+const WORKSPACE_LAYOUT_STORAGE_KEY = 'dexera-prototype.workspace-layout.v1';
+
+function getNextModuleId(modules: WorkspaceModule[]): number {
+  return modules.reduce((maxId, module) => Math.max(maxId, module.id), 0) + 1;
+}
+
+function isWorkspaceModule(value: unknown): value is WorkspaceModule {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const module = value as Record<string, unknown>;
+  const kind = module.kind;
+  const size = module.size;
+
+  return (
+    Number.isInteger(module.id) &&
+    Number(module.id) > 0 &&
+    typeof module.label === 'string' &&
+    (kind === 'overview' ||
+      kind === 'chart' ||
+      kind === 'trade' ||
+      kind === 'orderbook' ||
+      kind === 'positions' ||
+      kind === 'custom') &&
+    (size === 'full' || size === 'wide' || size === 'normal')
+  );
+}
+
+function loadPersistedModules(): WorkspaceModule[] | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const rawValue = window.localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY);
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const parsedValue = JSON.parse(rawValue) as unknown;
+    if (!parsedValue || typeof parsedValue !== 'object') {
+      return null;
+    }
+
+    const modules = (parsedValue as { modules?: unknown }).modules;
+    if (!Array.isArray(modules)) {
+      return null;
+    }
+
+    if (!modules.every(isWorkspaceModule)) {
+      return null;
+    }
+
+    return modules;
+  } catch {
+    return null;
+  }
+}
+
 export function useWorkspaceModules() {
   const [modules, setModules] = useState<WorkspaceModule[]>(initialModules);
-  const [nextModuleId, setNextModuleId] = useState(initialModules.length + 1);
+  const [nextModuleId, setNextModuleId] = useState(getNextModuleId(initialModules));
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [dropTargetId, setDropTargetId] = useState<number | null>(null);
+  const [hasLoadedPersistedLayout, setHasLoadedPersistedLayout] = useState(false);
+
+  useEffect(() => {
+    const storedModules = loadPersistedModules();
+    if (storedModules) {
+      setModules(storedModules);
+      setNextModuleId(getNextModuleId(storedModules));
+    }
+    setHasLoadedPersistedLayout(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedPersistedLayout || typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(WORKSPACE_LAYOUT_STORAGE_KEY, JSON.stringify({ modules }));
+    } catch {
+      // Ignore storage write failures in prototype mode.
+    }
+  }, [hasLoadedPersistedLayout, modules]);
 
   const addModule = () => {
     setModules((currentModules) => [...currentModules, createCustomModule(nextModuleId)]);
@@ -27,7 +109,7 @@ export function useWorkspaceModules() {
 
   const resetLayout = () => {
     setModules(initialModules);
-    setNextModuleId(initialModules.length + 1);
+    setNextModuleId(getNextModuleId(initialModules));
     setDraggingId(null);
     setDropTargetId(null);
   };
