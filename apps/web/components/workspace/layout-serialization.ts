@@ -1,14 +1,13 @@
+import { MODULE_KINDS, MODULE_SIZES } from './types';
 import type {
   ModuleKind,
   ModuleSize,
   WorkspaceConfigValue,
   WorkspaceModule,
   WorkspaceModuleConfig,
-} from '@/components/workspace/types';
+} from './types';
 
 const WORKSPACE_LAYOUT_VERSION = 1;
-const MODULE_KINDS: ModuleKind[] = ['overview', 'chart', 'trade', 'orderbook', 'positions', 'custom'];
-const MODULE_SIZES: ModuleSize[] = ['full', 'wide', 'normal'];
 
 type SerializedWorkspaceBlock = {
   id: number;
