@@ -8,7 +8,7 @@ import {
   moveModule,
   pushModuleToEnd,
 } from '@/components/workspace/logic';
-import type { WorkspaceModule } from '@/components/workspace/types';
+import { MODULE_KINDS, MODULE_SIZES, type WorkspaceModule } from '@/components/workspace/types';
 
 const WORKSPACE_LAYOUT_STORAGE_KEY = 'dexera-prototype.workspace-layout.v1';
 
@@ -29,13 +29,10 @@ function isWorkspaceModule(value: unknown): value is WorkspaceModule {
     Number.isInteger(moduleRecord.id) &&
     Number(moduleRecord.id) > 0 &&
     typeof moduleRecord.label === 'string' &&
-    (kind === 'overview' ||
-      kind === 'chart' ||
-      kind === 'trade' ||
-      kind === 'orderbook' ||
-      kind === 'positions' ||
-      kind === 'custom') &&
-    (size === 'full' || size === 'wide' || size === 'normal')
+    typeof kind === 'string' &&
+    MODULE_KINDS.includes(kind as (typeof MODULE_KINDS)[number]) &&
+    typeof size === 'string' &&
+    MODULE_SIZES.includes(size as (typeof MODULE_SIZES)[number])
   );
 }
 
