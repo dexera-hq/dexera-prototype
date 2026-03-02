@@ -263,10 +263,10 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
 
   const getConnectorOptions = useCallback(() => {
     return buildConnectorOptions({
-      slots: stateRef.current.slots,
+      slots: sessionState.slots,
       walletConnectEnabled,
     });
-  }, [walletConnectEnabled]);
+  }, [sessionState.slots, walletConnectEnabled]);
 
   const connectNewSlot = useCallback(
     async (connectorId: WalletConnectorId): Promise<ConnectWalletResult> => {

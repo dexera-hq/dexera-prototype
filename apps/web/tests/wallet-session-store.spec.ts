@@ -96,6 +96,30 @@ describe('wallet session store', () => {
     expect(updated.state.activeSlotId).toBe(updatedSlot.id);
   });
 
+  it('adds a new slot when a provided slot id does not exist, even if connector and address match', () => {
+    const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
+      slotId: 'slot-1',
+      address: '0xAAAA',
+      chainId: 1,
+      connectorId: 'injected',
+      connectedAt: '2026-03-02T10:00:00.000Z',
+    });
+
+    const second = upsertConnectedWallet(first.state, {
+      slotId: 'slot-2',
+      address: '0xAAAA',
+      chainId: 1,
+      connectorId: 'injected',
+      connectedAt: '2026-03-02T10:30:00.000Z',
+    });
+
+    expect(second.reason).toBe('added');
+    expect(second.state.slots).toHaveLength(2);
+    expect(second.state.slots.some((slot) => slot.id === 'slot-1')).toBe(true);
+    expect(second.state.slots.some((slot) => slot.id === 'slot-2')).toBe(true);
+    expect(second.state.activeSlotId).toBe('slot-2');
+  });
+
   it('marks a slot disconnected without removing it', () => {
     const connected = upsertConnectedWallet(createEmptyWalletSessionState(), {
       slotId: 'slot-1',

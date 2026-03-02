@@ -163,6 +163,7 @@ export function upsertConnectedWallet(
   payload: ConnectedWalletPayload,
 ): WalletStateResult {
   const trimmedAddress = payload.address.trim();
+  const trimmedSlotId = payload.slotId?.trim();
 
   if (trimmedAddress.length === 0 || !Number.isInteger(payload.chainId) || payload.chainId <= 0) {
     return buildResult(state, false, 'invalid-payload');
@@ -171,13 +172,13 @@ export function upsertConnectedWallet(
   const normalizedAddress = normalizeAddress(trimmedAddress);
   const lastConnectedAt = payload.connectedAt ?? new Date().toISOString();
   const label = payload.label?.trim() || undefined;
-  const existingSlot =
-    (payload.slotId ? state.slots.find((slot) => slot.id === payload.slotId) : undefined) ??
-    state.slots.find(
-      (slot) =>
-        walletAddressesMatch(slot.address, normalizedAddress) &&
-        slot.connectorId === payload.connectorId,
-    );
+  const existingSlot = trimmedSlotId
+    ? state.slots.find((slot) => slot.id === trimmedSlotId)
+    : state.slots.find(
+        (slot) =>
+          walletAddressesMatch(slot.address, normalizedAddress) &&
+          slot.connectorId === payload.connectorId,
+      );
 
   if (existingSlot) {
     const updatedSlot: WalletSlot = {
@@ -204,7 +205,7 @@ export function upsertConnectedWallet(
   }
 
   const newSlot: WalletSlot = {
-    id: payload.slotId?.trim().length ? payload.slotId.trim() : createSlotId(),
+    id: trimmedSlotId?.length ? trimmedSlotId : createSlotId(),
     address: normalizedAddress,
     chainId: payload.chainId,
     connectorId: payload.connectorId,
