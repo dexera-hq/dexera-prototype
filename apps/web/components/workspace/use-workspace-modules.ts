@@ -47,8 +47,13 @@ export function useWorkspaceModules() {
 
   const handleDropOnModule = (targetId: number, event: DragEvent<HTMLElement>) => {
     event.preventDefault();
+    event.stopPropagation();
     const sourceId = draggingId ?? Number(event.dataTransfer.getData('text/plain'));
-    if (!Number.isFinite(sourceId)) return;
+    if (!Number.isFinite(sourceId)) {
+      setDraggingId(null);
+      setDropTargetId(null);
+      return;
+    }
     setModules((currentModules) => moveModule(currentModules, sourceId, targetId));
     setDraggingId(null);
     setDropTargetId(null);
@@ -57,7 +62,11 @@ export function useWorkspaceModules() {
   const handleDropOnCanvas = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     const sourceId = draggingId ?? Number(event.dataTransfer.getData('text/plain'));
-    if (!Number.isFinite(sourceId)) return;
+    if (!Number.isFinite(sourceId)) {
+      setDraggingId(null);
+      setDropTargetId(null);
+      return;
+    }
     setModules((currentModules) => pushModuleToEnd(currentModules, sourceId));
     setDraggingId(null);
     setDropTargetId(null);

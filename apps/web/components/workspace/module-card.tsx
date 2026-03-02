@@ -46,7 +46,7 @@ export function WorkspaceModuleCard({
           <span className="drag-handle" aria-hidden="true">
             &#8942;&#8942;
           </span>
-          {module.label}
+          <span data-testid="module-title">{module.label}</span>
         </p>
         <Button
           type="button"
