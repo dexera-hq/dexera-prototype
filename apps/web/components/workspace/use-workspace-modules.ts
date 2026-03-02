@@ -36,6 +36,19 @@ function isWorkspaceModule(value: unknown): value is WorkspaceModule {
   );
 }
 
+function hasUniqueModuleIds(modules: WorkspaceModule[]): boolean {
+  const ids = new Set<number>();
+
+  for (const moduleItem of modules) {
+    if (ids.has(moduleItem.id)) {
+      return false;
+    }
+    ids.add(moduleItem.id);
+  }
+
+  return true;
+}
+
 function loadPersistedModules(): WorkspaceModule[] | null {
   if (typeof window === 'undefined') {
     return null;
@@ -58,6 +71,10 @@ function loadPersistedModules(): WorkspaceModule[] | null {
     }
 
     if (!modules.every(isWorkspaceModule)) {
+      return null;
+    }
+
+    if (!hasUniqueModuleIds(modules)) {
       return null;
     }
 
