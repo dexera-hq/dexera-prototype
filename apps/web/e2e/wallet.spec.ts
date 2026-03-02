@@ -11,10 +11,6 @@ type MockWalletWindow = Window & {
   __mockWallet?: MockWalletController;
 };
 
-function isHexChainId(value: unknown): value is HexChainId {
-  return typeof value === 'string' && value.startsWith('0x');
-}
-
 async function injectMockWallet(
   page: Page,
   {
@@ -34,6 +30,8 @@ async function injectMockWallet(
       const listeners = new Map<string, Set<WalletListener>>();
       let currentAccounts = [...initialAccounts];
       let currentChainId = chainId;
+      const hasHexChainIdShape = (value: unknown): value is HexChainId =>
+        typeof value === 'string' && /^0x[0-9a-fA-F]+$/.test(value);
 
       const provider = {
         request: async ({ method }: { method: string }) => {
@@ -70,7 +68,7 @@ async function injectMockWallet(
             currentAccounts = payload.filter((entry): entry is string => typeof entry === 'string');
           }
 
-          if (event === 'chainChanged' && isHexChainId(payload)) {
+          if (event === 'chainChanged' && hasHexChainIdShape(payload)) {
             currentChainId = payload;
           }
 
