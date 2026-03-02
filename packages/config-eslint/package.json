@@ -5,14 +5,12 @@
   "main": "./base.cjs",
   "exports": {
     ".": "./base.cjs",
-    "./base": "./base.cjs",
-    "./next": "./next.cjs"
+    "./base": "./base.cjs"
   },
   "peerDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.43.0",
     "@typescript-eslint/parser": "^8.43.0",
     "eslint": "^8.57.0 || ^9.0.0",
-    "eslint-config-next": "^15.5.2",
     "eslint-config-prettier": "^10.1.8"
   }
 }

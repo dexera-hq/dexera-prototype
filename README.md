@@ -1,10 +1,9 @@
 # Dexera monorepo bootstrap
 
-Polyglot monorepo scaffold for Dexera with a TypeScript/Next.js-first frontend and service runtime in Go + Rust.
+Polyglot monorepo scaffold for Dexera with a Go BFF, Rust services, and shared TypeScript contracts.
 
 ## Workspace layout
 
-- `apps/web`: Next.js TypeScript frontend (app router)
 - `apps/bff-go`: Go BFF with `/health` and `/api/v1/placeholder`
 - `services/market-data`: Rust scaffold with health/ping behavior
 - `services/execution`: Rust scaffold with health/ping behavior
@@ -31,9 +30,9 @@ pnpm check
 - `pnpm dev:api:docker:stubs`: start Go API + optional Redis/Postgres stubs
 - `pnpm dev:api:docker:down`: stop and remove Docker demo stack (including volumes)
 - `pnpm dev:api:docker:logs`: follow Docker demo stack logs
-- `pnpm build`: build all workspace packages/apps
-- `pnpm lint`: lint all workspace packages/apps
-- `pnpm typecheck`: typecheck all workspace packages/apps
+- `pnpm build`: build all workspace projects
+- `pnpm lint`: lint all workspace projects
+- `pnpm typecheck`: typecheck all workspace projects
 - `pnpm test`: run all workspace tests
 - `pnpm check`: codegen drift check + lint/type/test/build
 - `pnpm contracts:validate`: basic OpenAPI/proto validation
@@ -85,7 +84,7 @@ Notes:
 
 GitHub Actions workflow at `.github/workflows/ci.yml` runs:
 
-- TypeScript/Next.js checks + Playwright smoke test
+- TypeScript workspace checks
 - Go format/vet/test
 - Rust fmt/clippy/test
 - Contract validation and generation drift checks

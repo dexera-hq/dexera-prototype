@@ -4,12 +4,10 @@
   "private": true,
   "exports": {
     "./base.json": "./base.json",
-    "./library.json": "./library.json",
-    "./nextjs.json": "./nextjs.json"
+    "./library.json": "./library.json"
   },
   "files": [
     "base.json",
-    "library.json",
-    "nextjs.json"
+    "library.json"
   ]
 }

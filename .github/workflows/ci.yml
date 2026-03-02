@@ -7,7 +7,7 @@ on:
 
 jobs:
   ts_checks:
-    name: TypeScript / Next.js checks
+    name: TypeScript workspace checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -32,12 +32,6 @@ jobs:
 
       - name: Run turbo checks
         run: pnpm turbo run lint typecheck test build --continue
-
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Run web smoke test
-        run: pnpm --filter @dexera/web test:e2e:smoke
 
       - name: Verify generated artifacts are up to date
         run: pnpm codegen:check
