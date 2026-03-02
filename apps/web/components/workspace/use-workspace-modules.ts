@@ -21,14 +21,14 @@ function isWorkspaceModule(value: unknown): value is WorkspaceModule {
     return false;
   }
 
-  const module = value as Record<string, unknown>;
-  const kind = module.kind;
-  const size = module.size;
+  const moduleRecord = value as Record<string, unknown>;
+  const kind = moduleRecord.kind;
+  const size = moduleRecord.size;
 
   return (
-    Number.isInteger(module.id) &&
-    Number(module.id) > 0 &&
-    typeof module.label === 'string' &&
+    Number.isInteger(moduleRecord.id) &&
+    Number(moduleRecord.id) > 0 &&
+    typeof moduleRecord.label === 'string' &&
     (kind === 'overview' ||
       kind === 'chart' ||
       kind === 'trade' ||
