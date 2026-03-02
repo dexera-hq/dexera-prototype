@@ -1,0 +1,12 @@
+[package]
+name = "portfolio"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "portfolio"
+path = "src/lib.rs"
+
+[[bin]]
+name = "portfolio"
+path = "src/main.rs"

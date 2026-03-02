@@ -1,0 +1,27 @@
+# Node
+node_modules/
+.pnpm-store/
+
+# Build outputs
+.next/
+dist/
+coverage/
+playwright-report/
+
+# Rust
+/target/
+
+# Go
+*.test
+*.out
+apps/bff-go/.cache/
+apps/bff-go/bff
+apps/bff-go/*.exe
+
+# Misc
+.DS_Store
+.env
+.env.local
+
+# Turbo
+.turbo/

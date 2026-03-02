@@ -1,0 +1,12 @@
+[package]
+name = "market-data"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "market_data"
+path = "src/lib.rs"
+
+[[bin]]
+name = "market-data"
+path = "src/main.rs"

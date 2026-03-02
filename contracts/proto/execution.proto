@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package dexera.execution.v1;
+
+service ExecutionService {
+  rpc Ping(PingRequest) returns (PingReply);
+  rpc Health(HealthRequest) returns (HealthReply);
+}
+
+message PingRequest {
+  string request_id = 1;
+}
+
+message PingReply {
+  string message = 1;
+  string service = 2;
+}
+
+message HealthRequest {}
+
+message HealthReply {
+  string status = 1;
+  string service = 2;
+}

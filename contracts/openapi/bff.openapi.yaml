@@ -1,0 +1,63 @@
+openapi: 3.1.0
+info:
+  title: Dexera BFF API
+  version: 0.1.0
+  description: Public API exposed by Dexera Go BFF.
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: BFF liveness and status
+      operationId: getHealth
+      tags:
+        - system
+      responses:
+        '200':
+          description: Health response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /api/v1/placeholder:
+    get:
+      summary: Bootstrap placeholder endpoint
+      operationId: getPlaceholder
+      tags:
+        - bootstrap
+      responses:
+        '200':
+          description: Placeholder data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceholderResponse'
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - service
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        service:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    PlaceholderResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - message
+        - source
+      properties:
+        message:
+          type: string
+        source:
+          type: string

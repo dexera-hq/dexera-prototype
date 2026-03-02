@@ -1,0 +1,12 @@
+[package]
+name = "execution"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "execution"
+path = "src/lib.rs"
+
+[[bin]]
+name = "execution"
+path = "src/main.rs"

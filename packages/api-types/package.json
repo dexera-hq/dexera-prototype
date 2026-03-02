@@ -1,0 +1,34 @@
+{
+  "name": "@dexera/api-types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./openapi": {
+      "types": "./src/generated/openapi/index.ts",
+      "default": "./src/generated/openapi/index.ts"
+    },
+    "./proto": {
+      "types": "./src/generated/proto/index.ts",
+      "default": "./src/generated/proto/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint src --max-warnings=0",
+    "format": "prettier --check src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "generate": "node ../../scripts/codegen.mjs"
+  },
+  "devDependencies": {
+    "@dexera/eslint-config": "workspace:*",
+    "@dexera/tsconfig": "workspace:*"
+  }
+}
