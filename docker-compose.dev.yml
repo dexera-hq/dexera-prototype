@@ -1,0 +1,67 @@
+name: dexera-dev
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/bff-go/Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      redis-stub:
+        condition: service_healthy
+        required: false
+      postgres-stub:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - dexera-dev
+
+  redis-stub:
+    image: redis:7-alpine
+    profiles:
+      - stubs
+    ports:
+      - "16379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
+    networks:
+      - dexera-dev
+
+  postgres-stub:
+    image: postgres:16-alpine
+    profiles:
+      - stubs
+    env_file:
+      - .env
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres_stub_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks:
+      - dexera-dev
+
+volumes:
+  postgres_stub_data:
+
+networks:
+  dexera-dev:
+    driver: bridge
