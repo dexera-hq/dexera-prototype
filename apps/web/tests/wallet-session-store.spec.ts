@@ -81,9 +81,14 @@ describe('wallet session store', () => {
 
     expect(updated.reason).toBe('updated');
     expect(updated.state.slots).toHaveLength(1);
-    expect(updated.state.slots[0].chainId).toBe(999);
-    expect(updated.state.slots[0].label).toBe('MetaMask');
-    expect(updated.state.activeSlotId).toBe(updated.state.slots[0].id);
+    const updatedSlot = updated.state.slots[0];
+    expect(updatedSlot).toBeDefined();
+    if (!updatedSlot) {
+      throw new Error('Expected the updated wallet slot to exist');
+    }
+    expect(updatedSlot.chainId).toBe(999);
+    expect(updatedSlot.label).toBe('MetaMask');
+    expect(updated.state.activeSlotId).toBe(updatedSlot.id);
   });
 
   it('removes the active slot and promotes the next most recent slot', () => {
@@ -110,8 +115,13 @@ describe('wallet session store', () => {
 
     expect(removed.reason).toBe('removed');
     expect(removed.state.slots).toHaveLength(2);
-    expect(removed.state.activeSlotId).toBe(removed.state.slots[0].id);
-    expect(removed.state.slots[0].address).toBe('0x2222');
+    const nextActiveSlot = removed.state.slots[0];
+    expect(nextActiveSlot).toBeDefined();
+    if (!nextActiveSlot) {
+      throw new Error('Expected the next active wallet slot to exist');
+    }
+    expect(removed.state.activeSlotId).toBe(nextActiveSlot.id);
+    expect(nextActiveSlot.address).toBe('0x2222');
   });
 
   it('serializes, restores, and safely ignores malformed persisted state', () => {

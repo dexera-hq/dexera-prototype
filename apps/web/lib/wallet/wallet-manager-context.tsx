@@ -153,7 +153,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
     }
 
     persistSessionState(sessionState);
-  }, [hasHydrated, sessionState]);
+  }, [hasHydrated, persistSessionState, sessionState]);
 
   useEffect(() => {
     if (!hasHydrated) {
@@ -161,7 +161,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
     }
 
     reconcilePersistedSessions();
-  }, [hasHydrated, status, address, chainId, connector?.id]);
+  }, [address, chainId, connector?.id, hasHydrated, reconcilePersistedSessions, status]);
 
   useEffect(() => {
     if (!hasHydrated || !isConnected || !address || !chainId || !connector?.id) {
@@ -169,7 +169,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
     }
 
     applyConnectedSession();
-  }, [hasHydrated, isConnected, address, chainId, connector?.id, connector?.name]);
+  }, [address, applyConnectedSession, chainId, connector?.id, hasHydrated, isConnected]);
 
   function connectWallet(): ConnectWalletResult {
     if (openConnectModal) {
@@ -181,7 +181,10 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    const targetConnector = connectors.find((candidate) => candidate.id === 'walletConnect') ?? connectors[0];
+    const targetConnector =
+      connectors.find((candidate) => candidate.id === 'injected') ??
+      connectors.find((candidate) => candidate.id === 'coinbaseWalletSDK') ??
+      connectors[0];
 
     if (!targetConnector) {
       return {

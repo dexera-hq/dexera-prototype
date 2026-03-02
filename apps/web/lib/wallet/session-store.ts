@@ -98,7 +98,7 @@ function coerceWalletSlot(candidate: unknown): WalletSlot | null {
     connectorId,
     label: typeof label === 'string' && label.trim().length > 0 ? label.trim() : undefined,
     lastConnectedAt,
-    status,
+    status: status as WalletSlotStatus,
   };
 }
 
@@ -256,7 +256,7 @@ export function markWalletSlotStatus(
     return buildResult(state, false, 'status-updated', slotId);
   }
 
-  const updatedSlots = state.slots.map((slot) =>
+  const updatedSlots = state.slots.map<WalletSlot>((slot) =>
     slot.id === slotId
       ? {
           ...slot,
@@ -280,7 +280,7 @@ export function markAllWalletSlots(state: WalletSessionState, status: WalletSlot
       slots: state.slots.map((slot) => ({
         ...slot,
         status,
-      })),
+      })) as WalletSlot[],
       activeSlotId: state.activeSlotId,
     },
     true,
