@@ -6,20 +6,20 @@ import {
   assertPayloadMatchesActiveWallet,
   assertUnsignedTxPayload,
 } from './transaction-guardrails';
-import type { TransactionSigningResult, WalletSlot } from './types';
+import type { TransactionSubmissionResult, WalletSlot } from './types';
 
-export interface ClientTransactionSigner {
-  signTransaction: (parameters: {
+export interface ClientTransactionSubmitter {
+  sendTransaction: (parameters: {
     walletAddress: string;
     payload: UnsignedTxPayload;
   }) => Promise<string>;
 }
 
-export async function signUnsignedTransaction(parameters: {
+export async function submitUnsignedTransaction(parameters: {
   payload: unknown;
   activeWallet: WalletSlot | null;
-  signer: ClientTransactionSigner;
-}): Promise<TransactionSigningResult> {
+  submitter: ClientTransactionSubmitter;
+}): Promise<TransactionSubmissionResult> {
   assertClientSigningContext();
   assertUnsignedTxPayload(parameters.payload);
   assertPayloadMatchesActiveWallet(parameters.payload, parameters.activeWallet);
@@ -29,17 +29,20 @@ export async function signUnsignedTransaction(parameters: {
     throw new TransactionGuardrailError('missing-wallet', 'Connect a wallet before signing.');
   }
 
-  const signedTransaction = await parameters.signer.signTransaction({
+  const transactionHash = await parameters.submitter.sendTransaction({
     walletAddress: activeWallet.walletAddress,
     payload: parameters.payload,
   });
 
-  if (signedTransaction.trim().length === 0) {
-    throw new TransactionGuardrailError('signing-failed', 'Wallet signer returned an empty signed transaction.');
+  if (transactionHash.trim().length === 0) {
+    throw new TransactionGuardrailError(
+      'signing-failed',
+      'Wallet submission returned an empty transaction hash.',
+    );
   }
 
   return {
-    signedTransaction,
+    transactionHash,
     unsignedTxPayloadId: parameters.payload.id,
     walletAddress: activeWallet.walletAddress,
     chainId: activeWallet.chainId,

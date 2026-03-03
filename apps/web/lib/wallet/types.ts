@@ -34,8 +34,8 @@ export interface WalletConnectorOption {
   unavailableReason?: WalletConnectorUnavailableReason;
 }
 
-export interface TransactionSigningResult {
-  signedTransaction: string;
+export interface TransactionSubmissionResult {
+  transactionHash: string;
   unsignedTxPayloadId: string;
   walletAddress: string;
   chainId: ChainId;

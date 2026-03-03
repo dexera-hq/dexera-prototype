@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { signUnsignedTransaction } from '../lib/wallet/sign-unsigned-transaction';
+import { submitUnsignedTransaction } from '../lib/wallet/sign-unsigned-transaction';
 import {
   TransactionGuardrailError,
   assertPayloadMatchesActiveWallet,
@@ -68,7 +68,7 @@ describe('transaction guardrails', () => {
     ).toThrow(TransactionGuardrailError);
   });
 
-  it('signs a validated payload only from the client context', async () => {
+  it('submits a validated payload only from the client context', async () => {
     const globalWindow = globalThis as typeof globalThis & { window?: Window };
     const previousWindow = globalWindow.window;
     Object.defineProperty(globalWindow, 'window', {
@@ -77,7 +77,7 @@ describe('transaction guardrails', () => {
     });
 
     try {
-      const result = await signUnsignedTransaction({
+      const result = await submitUnsignedTransaction({
         payload: {
           id: 'utxp_1',
           walletAddress: '0x1111',
@@ -88,12 +88,12 @@ describe('transaction guardrails', () => {
           value: '0',
         },
         activeWallet,
-        signer: {
-          signTransaction: async () => '0xsigned',
+        submitter: {
+          sendTransaction: async () => '0xsubmitted',
         },
       });
 
-      expect(result.signedTransaction).toBe('0xsigned');
+      expect(result.transactionHash).toBe('0xsubmitted');
       expect(result.walletAddress).toBe(activeWallet.walletAddress);
     } finally {
       if (previousWindow === undefined) {
