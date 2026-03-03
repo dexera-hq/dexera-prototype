@@ -32,6 +32,69 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlaceholderResponse'
+  /api/v1/quotes:
+    post:
+      summary: Request a normalized Uniswap trade quote
+      operationId: postQuote
+      tags:
+        - trading
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+      responses:
+        '200':
+          description: Quote response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteResponse'
+  /api/v1/transactions/build:
+    post:
+      summary: Build unsigned transaction from quote (mock)
+      operationId: postBuildTransaction
+      deprecated: true
+      tags:
+        - trading
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildTransactionRequest'
+      responses:
+        '200':
+          description: Unsigned transaction response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildTransactionResponse'
+  /api/v1/positions:
+    get:
+      summary: Retrieve positions for a wallet (mock)
+      operationId: getPositions
+      tags:
+        - portfolio
+      parameters:
+        - in: query
+          name: wallet
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: chainId
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Wallet positions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PositionsResponse'
 components:
   schemas:
     HealthResponse:
@@ -59,5 +122,295 @@ components:
       properties:
         message:
           type: string
+        source:
+          type: string
+    QuoteRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - chainId
+        - sellToken
+        - buyToken
+        - sellAmount
+        - wallet
+      properties:
+        chainId:
+          type: integer
+        sellToken:
+          type: string
+        buyToken:
+          type: string
+        sellAmount:
+          type: string
+        wallet:
+          type: string
+        slippageBps:
+          type: integer
+        affiliateTag:
+          type: string
+    QuoteResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - quoteId
+        - chainId
+        - sellToken
+        - buyToken
+        - sellAmount
+        - amountOut
+        - minOut
+        - safety
+        - unsignedTx
+        - route
+        - fees
+        - requiredApprovals
+        - source
+      properties:
+        quoteId:
+          type: string
+        chainId:
+          type: integer
+        sellToken:
+          type: string
+        buyToken:
+          type: string
+        sellAmount:
+          type: string
+        amountOut:
+          type: string
+        minOut:
+          type: string
+        safety:
+          $ref: '#/components/schemas/QuoteSafety'
+        unsignedTx:
+          $ref: '#/components/schemas/UnsignedTransaction'
+        route:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuoteRouteHop'
+        fees:
+          $ref: '#/components/schemas/QuoteFees'
+        requiredApprovals:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequiredApproval'
+        source:
+          type: string
+          enum: [uniswap]
+    QuoteRouteHop:
+      type: object
+      additionalProperties: false
+      required:
+        - pathIndex
+        - hopIndex
+        - type
+      properties:
+        pathIndex:
+          type: integer
+        hopIndex:
+          type: integer
+        type:
+          type: string
+        address:
+          type: string
+        tokenIn:
+          type: string
+        tokenOut:
+          type: string
+    QuoteFeeItem:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+        amount:
+          type: string
+        token:
+          type: string
+        bips:
+          type: string
+        recipient:
+          type: string
+    QuoteFees:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        gasFee:
+          type: string
+        gasFeeQuote:
+          type: string
+        gasFeeUsd:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuoteFeeItem'
+    QuoteSafety:
+      type: object
+      additionalProperties: false
+      required:
+        - minOut
+        - deadline
+      properties:
+        minOut:
+          type: string
+        deadline:
+          type: string
+    ApprovalTx:
+      type: object
+      additionalProperties: false
+      required:
+        - to
+        - data
+        - value
+      properties:
+        to:
+          type: string
+        from:
+          type: string
+        data:
+          type: string
+        value:
+          type: string
+        gasLimit:
+          type: string
+        maxFeePerGas:
+          type: string
+        maxPriorityFeePerGas:
+          type: string
+    RequiredApproval:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+        - requiredAmount
+        - approvalTx
+      properties:
+        token:
+          type: string
+        spender:
+          type: string
+        requiredAmount:
+          type: string
+        approvalTx:
+          $ref: '#/components/schemas/ApprovalTx'
+        cancelTx:
+          $ref: '#/components/schemas/ApprovalTx'
+    BuildTransactionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - quoteId
+        - wallet
+        - chainId
+      properties:
+        quoteId:
+          type: string
+        wallet:
+          type: string
+        chainId:
+          type: integer
+    UnsignedTransaction:
+      type: object
+      additionalProperties: false
+      required:
+        - to
+        - data
+        - value
+        - gasLimit
+        - maxFeePerGas
+        - maxPriorityFeePerGas
+        - chainId
+      properties:
+        to:
+          type: string
+        data:
+          type: string
+        value:
+          type: string
+        gasLimit:
+          type: string
+        maxFeePerGas:
+          type: string
+        maxPriorityFeePerGas:
+          type: string
+        chainId:
+          type: integer
+    BuildTransactionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - buildId
+        - quoteId
+        - wallet
+        - unsignedTx
+        - warnings
+        - simulated
+        - source
+      properties:
+        buildId:
+          type: string
+        quoteId:
+          type: string
+        wallet:
+          type: string
+        unsignedTx:
+          $ref: '#/components/schemas/UnsignedTransaction'
+        warnings:
+          type: array
+          items:
+            type: string
+        simulated:
+          type: boolean
+        source:
+          type: string
+    Position:
+      type: object
+      additionalProperties: false
+      required:
+        - positionId
+        - chainId
+        - protocol
+        - asset
+        - balance
+        - usdValue
+        - unrealizedPnlUsd
+        - lastUpdatedAt
+      properties:
+        positionId:
+          type: string
+        chainId:
+          type: integer
+        protocol:
+          type: string
+        asset:
+          type: string
+        balance:
+          type: string
+        usdValue:
+          type: string
+        unrealizedPnlUsd:
+          type: string
+        lastUpdatedAt:
+          type: string
+          format: date-time
+    PositionsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - wallet
+        - positions
+        - source
+      properties:
+        wallet:
+          type: string
+        chainId:
+          type: integer
+        positions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Position'
         source:
           type: string

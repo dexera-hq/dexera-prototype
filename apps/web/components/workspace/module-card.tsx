@@ -2,11 +2,13 @@ import type { DragEvent, PointerEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ModuleContent } from '@/components/workspace/module-content';
+import type { WorkspaceMarketDataState } from '@/components/workspace/use-workspace-market-data';
 import type { WorkspaceModule } from '@/components/workspace/types';
 import { cn } from '@/lib/utils';
 
 type WorkspaceModuleCardProps = {
   module: WorkspaceModule;
+  marketData: WorkspaceMarketDataState;
   draggingId: number | null;
   dropTargetId: number | null;
   onRemove: (id: number) => void;
@@ -21,6 +23,7 @@ type WorkspaceModuleCardProps = {
 
 export function WorkspaceModuleCard({
   module,
+  marketData,
   draggingId,
   dropTargetId,
   onRemove,
@@ -69,7 +72,7 @@ export function WorkspaceModuleCard({
         </Button>
       </CardHeader>
       <CardContent className="module-body">
-        <ModuleContent module={module} />
+        <ModuleContent module={module} marketData={marketData} />
       </CardContent>
     </Card>
   );
