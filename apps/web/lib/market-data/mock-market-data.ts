@@ -86,10 +86,6 @@ function fnv1a32(value: string): number {
 
 function resolveSymbols(symbols: string[]): string[] {
   const requested = symbols.map(normalizeSymbol).filter((symbol) => symbol.length > 0);
-  if (requested.length === 0) {
-    return Object.keys(BASE_PRICE_BY_SYMBOL);
-  }
-
   return [...new Set(requested)];
 }
 

@@ -64,6 +64,41 @@ describe('mock market data routes', () => {
     expect(payload.UNKNOWN).toBeUndefined();
   });
 
+  it('returns chain-scoped symbols when /api/mock/prices is called without symbols', async () => {
+    const tokensResponse = await getTokensRoute(
+      new Request('http://localhost/api/mock/tokens?chain=hyperliquid'),
+    );
+    const tokensPayload = (await tokensResponse.json()) as TokenMetadata[];
+    const expectedSymbols = tokensPayload.map((token) => token.symbol.toUpperCase()).sort();
+
+    const response = await getPricesRoute(new Request('http://localhost/api/mock/prices?chain=hyperliquid'));
+    const payload = (await response.json()) as Record<string, SpotPrice>;
+    const returnedSymbols = Object.keys(payload).sort();
+
+    expect(response.status).toBe(200);
+    expect(returnedSymbols).toEqual(expectedSymbols);
+  });
+
+  it('returns an empty price map when chain is unsupported, even if symbols are provided', async () => {
+    const response = await getPricesRoute(
+      new Request('http://localhost/api/mock/prices?symbols=ETH,BTC&chain=unsupported-chain'),
+    );
+    const payload = (await response.json()) as Record<string, SpotPrice>;
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({});
+  });
+
+  it('returns an empty price map when chain is unsupported and symbols are omitted', async () => {
+    const response = await getPricesRoute(
+      new Request('http://localhost/api/mock/prices?chain=unsupported-chain'),
+    );
+    const payload = (await response.json()) as Record<string, SpotPrice>;
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({});
+  });
+
   it('returns deterministic balances from /api/mock/balances', async () => {
     const response = await getBalancesRoute(new Request('http://localhost/api/mock/balances?chain=hyperliquid'));
     const payload = (await response.json()) as Balance[];

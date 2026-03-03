@@ -3,9 +3,6 @@
 import { useEffect, useState } from 'react';
 import type { Balance, SpotPrice, TokenMetadata } from '@/lib/market-data/types';
 
-const DEFAULT_CHAIN = 'hyperliquid';
-const DEFAULT_SYMBOLS = ['ETH', 'BTC', 'USDC', 'SOL'];
-
 type ErrorPayload = {
   error?: string;
 };
@@ -25,18 +22,6 @@ const INITIAL_MARKET_DATA_STATE: WorkspaceMarketDataState = {
   loading: true,
   error: null,
 };
-
-function buildQueryString(params: Record<string, string | undefined>): string {
-  const searchParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value && value.length > 0) {
-      searchParams.set(key, value);
-    }
-  }
-
-  const serialized = searchParams.toString();
-  return serialized.length > 0 ? `?${serialized}` : '';
-}
 
 async function decodeJSON<T>(response: Response): Promise<T> {
   if (response.ok) {
@@ -66,20 +51,14 @@ export function useWorkspaceMarketData(): WorkspaceMarketDataState {
     async function loadMarketData(): Promise<void> {
       setMarketData((current) => ({ ...current, loading: true, error: null }));
       try {
-        const chainQuery = buildQueryString({ chain: DEFAULT_CHAIN });
-        const pricesQuery = buildQueryString({
-          chain: DEFAULT_CHAIN,
-          symbols: DEFAULT_SYMBOLS.join(','),
-        });
-
         const [tokens, prices, balances] = await Promise.all([
-          fetch(`/api/mock/tokens${chainQuery}`, { signal: abortController.signal }).then((response) =>
+          fetch('/api/mock/tokens', { signal: abortController.signal }).then((response) =>
             decodeJSON<TokenMetadata[]>(response),
           ),
-          fetch(`/api/mock/prices${pricesQuery}`, { signal: abortController.signal }).then((response) =>
+          fetch('/api/mock/prices', { signal: abortController.signal }).then((response) =>
             decodeJSON<Record<string, SpotPrice>>(response),
           ),
-          fetch(`/api/mock/balances${chainQuery}`, { signal: abortController.signal }).then((response) =>
+          fetch('/api/mock/balances', { signal: abortController.signal }).then((response) =>
             decodeJSON<Balance[]>(response),
           ),
         ]);
