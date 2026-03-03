@@ -55,6 +55,7 @@ paths:
     post:
       summary: Build unsigned transaction from quote (mock)
       operationId: postBuildTransaction
+      deprecated: true
       tags:
         - trading
       requestBody:
@@ -158,6 +159,8 @@ components:
         - sellAmount
         - amountOut
         - minOut
+        - safety
+        - unsignedTx
         - route
         - fees
         - requiredApprovals
@@ -177,6 +180,10 @@ components:
           type: string
         minOut:
           type: string
+        safety:
+          $ref: '#/components/schemas/QuoteSafety'
+        unsignedTx:
+          $ref: '#/components/schemas/UnsignedTransaction'
         route:
           type: array
           items:
@@ -240,6 +247,17 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/QuoteFeeItem'
+    QuoteSafety:
+      type: object
+      additionalProperties: false
+      required:
+        - minOut
+        - deadline
+      properties:
+        minOut:
+          type: string
+        deadline:
+          type: string
     ApprovalTx:
       type: object
       additionalProperties: false

@@ -2,6 +2,7 @@ package http
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 func normalizeQuoteResponse(
 	req quoteRequest,
 	quotePayload map[string]any,
+	swapPayload map[string]any,
 	approvalPayload map[string]any,
 ) (quoteResponse, error) {
 	quoteID := firstNonEmpty(
@@ -30,13 +32,14 @@ func normalizeQuoteResponse(
 		return quoteResponse{}, fmt.Errorf("missing amountOut in provider payload")
 	}
 
-	minOut := firstNonEmpty(
-		stringAtPath(quotePayload, "minOut"),
-		stringAtPath(quotePayload, "minAmountOut"),
-		stringAtPath(quotePayload, "quote", "output", "minAmount"),
-		stringAtPath(quotePayload, "output", "minAmount"),
-		amountOut,
-	)
+	unsignedTx, ok := normalizeUnsignedTransactionFromPayload(req, quotePayload, swapPayload)
+	if !ok {
+		return quoteResponse{}, fmt.Errorf("missing unsigned tx in provider payload")
+	}
+	safety, ok := normalizeQuoteSafety(quotePayload, swapPayload, unsignedTx.Data)
+	if !ok {
+		return quoteResponse{}, fmt.Errorf("missing quote safety parameters in provider payload")
+	}
 
 	return quoteResponse{
 		QuoteID:           quoteID,
@@ -45,12 +48,126 @@ func normalizeQuoteResponse(
 		BuyToken:          req.BuyToken,
 		SellAmount:        req.SellAmount,
 		AmountOut:         amountOut,
-		MinOut:            minOut,
+		MinOut:            safety.MinOut,
+		Safety:            safety,
+		UnsignedTx:        unsignedTx,
 		Route:             normalizeQuoteRoute(quotePayload),
 		Fees:              normalizeQuoteFees(quotePayload),
 		RequiredApprovals: normalizeRequiredApprovals(req, quotePayload, approvalPayload),
 		Source:            "uniswap",
 	}, nil
+}
+
+func normalizeQuoteSafety(
+	quotePayload map[string]any,
+	swapPayload map[string]any,
+	swapData string,
+) (quoteSafety, bool) {
+	minOut := firstNonEmpty(
+		stringAtPath(quotePayload, "minOut"),
+		stringAtPath(quotePayload, "minAmountOut"),
+		stringAtPath(quotePayload, "quote", "output", "minAmount"),
+		stringAtPath(quotePayload, "output", "minAmount"),
+		firstStringFromFirstObjectAtPath(quotePayload, []string{"quote", "aggregatedOutputs"}, "minAmount", "minimumAmount"),
+		firstStringFromFirstObjectAtPath(quotePayload, []string{"aggregatedOutputs"}, "minAmount", "minimumAmount"),
+	)
+	deadline := firstNonEmpty(
+		findStringDeep(swapPayload, "deadline"),
+		findStringDeep(quotePayload, "deadline"),
+	)
+	if !isPositiveIntegerString(deadline) {
+		deadline = deadlineFromUniversalRouterData(swapData)
+	}
+
+	if minOut == "" || !isPositiveIntegerString(deadline) {
+		return quoteSafety{}, false
+	}
+
+	return quoteSafety{
+		MinOut:   minOut,
+		Deadline: deadline,
+	}, true
+}
+
+func normalizeUnsignedTransactionFromPayload(
+	req quoteRequest,
+	quotePayload map[string]any,
+	swapPayload map[string]any,
+) (unsignedTransaction, bool) {
+	txRaw := firstAny(
+		anyAtPath(swapPayload, "swap"),
+		anyAtPath(swapPayload, "tx"),
+		anyAtPath(swapPayload, "transaction"),
+		anyAtPath(quotePayload, "swap"),
+		anyAtPath(quotePayload, "tx"),
+		anyAtPath(quotePayload, "quote", "tx"),
+		anyAtPath(quotePayload, "transaction"),
+		anyAtPath(quotePayload, "quote", "transaction"),
+		anyAtPath(quotePayload, "swapTx"),
+		anyAtPath(quotePayload, "quote", "swapTx"),
+	)
+	txMap, ok := txRaw.(map[string]any)
+	if !ok {
+		return unsignedTransaction{}, false
+	}
+
+	to := firstNonEmpty(stringFromMap(txMap, "to", "target"))
+	data := firstNonEmpty(stringFromMap(txMap, "data", "calldata"))
+	value := stringFromMap(txMap, "value")
+	gasLimit := firstNonEmpty(stringFromMap(txMap, "gasLimit", "gas"))
+	maxFeePerGas := stringFromMap(txMap, "maxFeePerGas")
+	maxPriorityFeePerGas := stringFromMap(txMap, "maxPriorityFeePerGas")
+	if to == "" || data == "" || value == "" || gasLimit == "" || maxFeePerGas == "" || maxPriorityFeePerGas == "" {
+		return unsignedTransaction{}, false
+	}
+
+	return unsignedTransaction{
+		To:                   to,
+		Data:                 data,
+		Value:                value,
+		GasLimit:             gasLimit,
+		MaxFeePerGas:         maxFeePerGas,
+		MaxPriorityFeePerGas: maxPriorityFeePerGas,
+		ChainID:              req.ChainID,
+	}, true
+}
+
+func isPositiveIntegerString(value string) bool {
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return false
+	}
+	return parsed > 0
+}
+
+func firstStringFromFirstObjectAtPath(root map[string]any, path []string, keys ...string) string {
+	itemsRaw := anyAtPath(root, path...)
+	items, ok := itemsRaw.([]any)
+	if !ok || len(items) == 0 {
+		return ""
+	}
+	first, ok := items[0].(map[string]any)
+	if !ok {
+		return ""
+	}
+	return stringFromMap(first, keys...)
+}
+
+func deadlineFromUniversalRouterData(data string) string {
+	trimmed := strings.TrimSpace(strings.TrimPrefix(data, "0x"))
+	if len(trimmed) < 8+(64*3) {
+		return ""
+	}
+	if strings.ToLower(trimmed[:8]) != "3593564c" {
+		return ""
+	}
+
+	deadlineWord := trimmed[8+(64*2) : 8+(64*3)]
+	parsed := new(big.Int)
+	if _, ok := parsed.SetString(deadlineWord, 16); !ok || parsed.Sign() <= 0 {
+		return ""
+	}
+	return parsed.String()
 }
 
 func normalizeQuoteRoute(quotePayload map[string]any) []quoteRouteHop {

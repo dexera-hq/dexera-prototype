@@ -71,6 +71,17 @@ func (c *uniswapClient) quote(ctx context.Context, req quoteRequest) (map[string
 	return c.postJSON(ctx, "quote", payload)
 }
 
+func (c *uniswapClient) swap(ctx context.Context, quotePayload map[string]any) (map[string]any, error) {
+	quote, ok := quotePayload["quote"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("missing quote object in quote payload")
+	}
+
+	return c.postJSON(ctx, "swap", map[string]any{
+		"quote": quote,
+	})
+}
+
 func (c *uniswapClient) checkApproval(
 	ctx context.Context,
 	req quoteRequest,

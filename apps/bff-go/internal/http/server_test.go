@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+const universalRouterCalldataWithDeadline = "0x3593564c000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000067748580"
+
 func TestHealthHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rr := httptest.NewRecorder()
@@ -122,6 +124,24 @@ func TestQuoteHandler(t *testing.T) {
 					"maxPriorityFeePerGas": "2000000000",
 				},
 			})
+		case "/swap":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("expected valid JSON request body, got err=%v", err)
+			}
+			if _, ok := body["quote"].(map[string]any); !ok {
+				t.Fatalf("expected quote object in swap request, got %v", body["quote"])
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"swap": map[string]any{
+					"to":                   "0x5555555555555555555555555555555555555555",
+					"data":                 universalRouterCalldataWithDeadline,
+					"value":                "0",
+					"gasLimit":             "250000",
+					"maxFeePerGas":         "35000000000",
+					"maxPriorityFeePerGas": "2000000000",
+				},
+			})
 		default:
 			http.Error(w, "not found", http.StatusNotFound)
 		}
@@ -164,6 +184,26 @@ func TestQuoteHandler(t *testing.T) {
 	if res["minOut"] != "1220000000000000000" {
 		t.Fatalf("expected minOut to be mapped, got %v", res["minOut"])
 	}
+	safety, ok := res["safety"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected safety object in response")
+	}
+	if safety["minOut"] != "1220000000000000000" {
+		t.Fatalf("expected safety.minOut to be mapped, got %v", safety["minOut"])
+	}
+	if safety["deadline"] != "1735689600" {
+		t.Fatalf("expected safety.deadline to be mapped, got %v", safety["deadline"])
+	}
+	unsignedTx, ok := res["unsignedTx"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected unsignedTx object in response")
+	}
+	if unsignedTx["to"] != "0x5555555555555555555555555555555555555555" {
+		t.Fatalf("expected unsignedTx.to to be mapped, got %v", unsignedTx["to"])
+	}
+	if unsignedTx["gasLimit"] != "250000" {
+		t.Fatalf("expected unsignedTx.gasLimit to be mapped, got %v", unsignedTx["gasLimit"])
+	}
 	route, ok := res["route"].([]any)
 	if !ok || len(route) == 0 {
 		t.Fatalf("expected route hops in response")
@@ -189,6 +229,211 @@ func TestQuoteHandler(t *testing.T) {
 	requiredApprovals, ok := res["requiredApprovals"].([]any)
 	if !ok || len(requiredApprovals) != 1 {
 		t.Fatalf("expected exactly one required approval, got %v", res["requiredApprovals"])
+	}
+}
+
+func TestQuoteHandlerReturnsBadGatewayWhenQuotePayloadMissingUnsignedTx(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/quote":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"requestId": "quote_uni_001",
+				"quote": map[string]any{
+					"output": map[string]any{
+						"amount":    "1234500000000000000",
+						"minAmount": "1220000000000000000",
+					},
+				},
+			})
+		case "/check_approval":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"approvals": []any{},
+			})
+		case "/swap":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"requestId": "swap_001",
+			})
+		default:
+			http.Error(w, "unexpected path", http.StatusNotFound)
+		}
+	}))
+	defer upstream.Close()
+
+	t.Setenv("UNISWAP_TRADING_API_KEY", "test-api-key")
+	t.Setenv("UNISWAP_TRADING_API_BASE_URL", upstream.URL)
+
+	body := bytes.NewBufferString(`{
+		"chainId": 1,
+		"sellToken": "0x1111111111111111111111111111111111111111",
+		"buyToken": "0x2222222222222222222222222222222222222222",
+		"sellAmount": "1000000000000000000",
+		"wallet": "0xabc"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes", body)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502, got %d", rr.Code)
+	}
+}
+
+func TestQuoteHandlerReturnsBadGatewayWhenQuoteTxMissingGasFields(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/quote":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"requestId": "quote_uni_001",
+				"quote": map[string]any{
+					"output": map[string]any{
+						"amount":    "1234500000000000000",
+						"minAmount": "1220000000000000000",
+					},
+				},
+			})
+		case "/check_approval":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"approvals": []any{},
+			})
+		case "/swap":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"swap": map[string]any{
+					"to":    "0x5555555555555555555555555555555555555555",
+					"data":  universalRouterCalldataWithDeadline,
+					"value": "0",
+				},
+			})
+		default:
+			http.Error(w, "unexpected path", http.StatusNotFound)
+		}
+	}))
+	defer upstream.Close()
+
+	t.Setenv("UNISWAP_TRADING_API_KEY", "test-api-key")
+	t.Setenv("UNISWAP_TRADING_API_BASE_URL", upstream.URL)
+
+	body := bytes.NewBufferString(`{
+		"chainId": 1,
+		"sellToken": "0x1111111111111111111111111111111111111111",
+		"buyToken": "0x2222222222222222222222222222222222222222",
+		"sellAmount": "1000000000000000000",
+		"wallet": "0xabc"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes", body)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502, got %d", rr.Code)
+	}
+}
+
+func TestQuoteHandlerReturnsBadGatewayWhenQuotePayloadMissingDeadline(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/quote":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"requestId": "quote_uni_001",
+				"quote": map[string]any{
+					"output": map[string]any{
+						"amount":    "1234500000000000000",
+						"minAmount": "1220000000000000000",
+					},
+				},
+			})
+		case "/check_approval":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"approvals": []any{},
+			})
+		case "/swap":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"swap": map[string]any{
+					"to":                   "0x5555555555555555555555555555555555555555",
+					"data":                 "0xabcdef",
+					"value":                "0",
+					"gasLimit":             "250000",
+					"maxFeePerGas":         "35000000000",
+					"maxPriorityFeePerGas": "2000000000",
+				},
+			})
+		default:
+			http.Error(w, "unexpected path", http.StatusNotFound)
+		}
+	}))
+	defer upstream.Close()
+
+	t.Setenv("UNISWAP_TRADING_API_KEY", "test-api-key")
+	t.Setenv("UNISWAP_TRADING_API_BASE_URL", upstream.URL)
+
+	body := bytes.NewBufferString(`{
+		"chainId": 1,
+		"sellToken": "0x1111111111111111111111111111111111111111",
+		"buyToken": "0x2222222222222222222222222222222222222222",
+		"sellAmount": "1000000000000000000",
+		"wallet": "0xabc"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes", body)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502, got %d", rr.Code)
+	}
+}
+
+func TestQuoteHandlerReturnsBadGatewayWhenQuotePayloadMissingMinOut(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/quote":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"requestId": "quote_uni_001",
+				"quote": map[string]any{
+					"output": map[string]any{
+						"amount": "1234500000000000000",
+					},
+				},
+			})
+		case "/check_approval":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"approvals": []any{},
+			})
+		case "/swap":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"swap": map[string]any{
+					"to":                   "0x5555555555555555555555555555555555555555",
+					"data":                 universalRouterCalldataWithDeadline,
+					"value":                "0",
+					"gasLimit":             "250000",
+					"maxFeePerGas":         "35000000000",
+					"maxPriorityFeePerGas": "2000000000",
+				},
+			})
+		default:
+			http.Error(w, "unexpected path", http.StatusNotFound)
+		}
+	}))
+	defer upstream.Close()
+
+	t.Setenv("UNISWAP_TRADING_API_KEY", "test-api-key")
+	t.Setenv("UNISWAP_TRADING_API_BASE_URL", upstream.URL)
+
+	body := bytes.NewBufferString(`{
+		"chainId": 1,
+		"sellToken": "0x1111111111111111111111111111111111111111",
+		"buyToken": "0x2222222222222222222222222222222222222222",
+		"sellAmount": "1000000000000000000",
+		"wallet": "0xabc"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes", body)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502, got %d", rr.Code)
 	}
 }
 
@@ -256,6 +501,51 @@ func TestQuoteHandlerReturnsBadGatewayWhenApprovalUpstreamFails(t *testing.T) {
 				},
 			})
 		case "/check_approval":
+			http.Error(w, "upstream unavailable", http.StatusBadGateway)
+		default:
+			http.Error(w, "unexpected path", http.StatusNotFound)
+		}
+	}))
+	defer upstream.Close()
+
+	t.Setenv("UNISWAP_TRADING_API_KEY", "test-api-key")
+	t.Setenv("UNISWAP_TRADING_API_BASE_URL", upstream.URL)
+
+	body := bytes.NewBufferString(`{
+		"chainId": 1,
+		"sellToken": "0x1111111111111111111111111111111111111111",
+		"buyToken": "0x2222222222222222222222222222222222222222",
+		"sellAmount": "1000000000000000000",
+		"wallet": "0xabc"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes", body)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502, got %d", rr.Code)
+	}
+}
+
+func TestQuoteHandlerReturnsBadGatewayWhenSwapUpstreamFails(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/quote":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"requestId": "quote_uni_001",
+				"quote": map[string]any{
+					"output": map[string]any{
+						"amount":    "1234500000000000000",
+						"minAmount": "1220000000000000000",
+					},
+				},
+			})
+		case "/check_approval":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"approvals": []any{},
+			})
+		case "/swap":
 			http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		default:
 			http.Error(w, "unexpected path", http.StatusNotFound)
