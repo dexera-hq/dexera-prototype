@@ -75,6 +75,7 @@ export interface Quote extends Wallet {
 
 export interface UnsignedTxPayload {
   id: string;
+  walletAddress: string;
   chainId: ChainId;
   kind: TxPayloadKind;
   to: string;

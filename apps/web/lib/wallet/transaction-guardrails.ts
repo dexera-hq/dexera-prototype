@@ -20,6 +20,7 @@ export type TransactionGuardrailCode =
   | 'invalid-payload'
   | 'missing-wallet'
   | 'chain-mismatch'
+  | 'wallet-mismatch'
   | 'signed-field-present'
   | 'server-signing-forbidden'
   | 'signing-failed';
@@ -42,6 +43,10 @@ function hasNonEmptyString(record: Record<string, unknown>, key: string): boolea
   return typeof record[key] === 'string' && record[key].trim().length > 0;
 }
 
+function normalizeWalletAddress(walletAddress: string): string {
+  return walletAddress.trim().toLowerCase();
+}
+
 export function validateUnsignedTxPayload(
   payload: unknown,
 ): { ok: true; payload: UnsignedTxPayload } | { ok: false; error: TransactionGuardrailError } {
@@ -52,7 +57,7 @@ export function validateUnsignedTxPayload(
     };
   }
 
-  for (const key of ['id', 'kind', 'to', 'data', 'value']) {
+  for (const key of ['id', 'walletAddress', 'kind', 'to', 'data', 'value']) {
     if (!hasNonEmptyString(payload, key)) {
       return {
         ok: false,
@@ -75,7 +80,7 @@ export function validateUnsignedTxPayload(
   }
 
   for (const field of FORBIDDEN_SIGNED_FIELDS) {
-    if (field in payload && payload[field] !== undefined && payload[field] !== null) {
+    if (field in payload) {
       return {
         ok: false,
         error: new TransactionGuardrailError(
@@ -115,6 +120,13 @@ export function assertPayloadMatchesActiveWallet(
     throw new TransactionGuardrailError(
       'chain-mismatch',
       `Unsigned transaction chain ${payload.chainId} does not match active wallet chain ${activeWallet.chainId}.`,
+    );
+  }
+
+  if (normalizeWalletAddress(payload.walletAddress) !== normalizeWalletAddress(activeWallet.walletAddress)) {
+    throw new TransactionGuardrailError(
+      'wallet-mismatch',
+      `Unsigned transaction wallet ${payload.walletAddress} does not match active wallet ${activeWallet.walletAddress}.`,
     );
   }
 }

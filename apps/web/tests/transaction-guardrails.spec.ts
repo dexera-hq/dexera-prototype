@@ -21,6 +21,7 @@ describe('transaction guardrails', () => {
   it('accepts a valid unsigned transaction payload', () => {
     const result = validateUnsignedTxPayload({
       id: 'utxp_1',
+      walletAddress: '0x1111',
       chainId: 1,
       kind: 'evm_transaction',
       to: '0x1111111111111111111111111111111111111111',
@@ -34,6 +35,7 @@ describe('transaction guardrails', () => {
   it('rejects a payload that includes signed transaction fields', () => {
     const result = validateUnsignedTxPayload({
       id: 'utxp_1',
+      walletAddress: '0x1111',
       chainId: 1,
       kind: 'evm_transaction',
       to: '0x1111111111111111111111111111111111111111',
@@ -54,6 +56,7 @@ describe('transaction guardrails', () => {
       assertPayloadMatchesActiveWallet(
         {
           id: 'utxp_1',
+          walletAddress: '0x1111',
           chainId: 999,
           kind: 'evm_transaction',
           to: '0x1111111111111111111111111111111111111111',
@@ -77,6 +80,7 @@ describe('transaction guardrails', () => {
       const result = await signUnsignedTransaction({
         payload: {
           id: 'utxp_1',
+          walletAddress: '0x1111',
           chainId: 1,
           kind: 'evm_transaction',
           to: '0x1111111111111111111111111111111111111111',
@@ -101,5 +105,22 @@ describe('transaction guardrails', () => {
         });
       }
     }
+  });
+
+  it('rejects wallet mismatches against the active wallet', () => {
+    expect(() =>
+      assertPayloadMatchesActiveWallet(
+        {
+          id: 'utxp_1',
+          walletAddress: '0x9999',
+          chainId: 1,
+          kind: 'evm_transaction',
+          to: '0x1111111111111111111111111111111111111111',
+          data: '0xdeadbeef',
+          value: '0',
+        },
+        activeWallet,
+      ),
+    ).toThrow(TransactionGuardrailError);
   });
 });

@@ -26,6 +26,7 @@ type orderRequest struct {
 
 type unsignedTxPayloadResponse struct {
 	ID                   string `json:"id"`
+	WalletAddress        string `json:"walletAddress"`
 	ChainID              int    `json:"chainId"`
 	Kind                 string `json:"kind"`
 	To                   string `json:"to"`
@@ -67,6 +68,7 @@ func buildUnsignedTransactionHandler(w http.ResponseWriter, r *http.Request) {
 		Disclaimer:    clientSigningOnlyDisclaimer,
 		UnsignedTxPayload: unsignedTxPayloadResponse{
 			ID:                   fmt.Sprintf("utxp_%d", time.Now().UTC().UnixNano()),
+			WalletAddress:        request.Order.WalletAddress,
 			ChainID:              request.Order.ChainID,
 			Kind:                 "evm_transaction",
 			To:                   "0x1111111111111111111111111111111111111111",
@@ -134,6 +136,7 @@ func validateUnsignedTransactionResponse(response buildUnsignedTransactionRespon
 		return fmt.Errorf("unsigned transaction payload must include a positive chainId")
 	}
 	if strings.TrimSpace(payload.ID) == "" ||
+		strings.TrimSpace(payload.WalletAddress) == "" ||
 		strings.TrimSpace(payload.Kind) == "" ||
 		strings.TrimSpace(payload.To) == "" ||
 		strings.TrimSpace(payload.Data) == "" ||

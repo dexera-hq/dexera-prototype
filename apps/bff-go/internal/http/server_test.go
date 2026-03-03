@@ -75,6 +75,10 @@ func TestBuildUnsignedTransactionHandler(t *testing.T) {
 		t.Fatalf("expected unsignedTxPayload object, got %T", body["unsignedTxPayload"])
 	}
 
+	if unsignedPayload["walletAddress"] != "0x1111" {
+		t.Fatalf("expected walletAddress binding to be preserved, got %v", unsignedPayload["walletAddress"])
+	}
+
 	for _, forbiddenField := range []string{"from", "signature", "rawTransaction", "signedTransaction", "txHash"} {
 		if _, exists := unsignedPayload[forbiddenField]; exists {
 			t.Fatalf("expected unsigned payload to omit %s", forbiddenField)
