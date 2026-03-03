@@ -33,6 +33,8 @@ export interface BffQuoteResponse {
   sellAmount: string;
   amountOut: string;
   minOut: string;
+  safety: BffQuoteSafety;
+  unsignedTx: BffUnsignedTransaction;
   route: BffQuoteRouteHop[];
   fees: BffQuoteFees;
   requiredApprovals: BffRequiredApproval[];
@@ -61,6 +63,11 @@ export interface BffQuoteFees {
   gasFeeQuote?: string;
   gasFeeUsd?: string;
   items: BffQuoteFeeItem[];
+}
+
+export interface BffQuoteSafety {
+  minOut: string;
+  deadline: string;
 }
 
 export interface BffApprovalTx {

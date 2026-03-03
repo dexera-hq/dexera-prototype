@@ -31,17 +31,19 @@ type quoteRequest struct {
 }
 
 type quoteResponse struct {
-	QuoteID           string             `json:"quoteId"`
-	ChainID           int                `json:"chainId"`
-	SellToken         string             `json:"sellToken"`
-	BuyToken          string             `json:"buyToken"`
-	SellAmount        string             `json:"sellAmount"`
-	AmountOut         string             `json:"amountOut"`
-	MinOut            string             `json:"minOut"`
-	Route             []quoteRouteHop    `json:"route"`
-	Fees              quoteFees          `json:"fees"`
-	RequiredApprovals []requiredApproval `json:"requiredApprovals"`
-	Source            string             `json:"source"`
+	QuoteID           string              `json:"quoteId"`
+	ChainID           int                 `json:"chainId"`
+	SellToken         string              `json:"sellToken"`
+	BuyToken          string              `json:"buyToken"`
+	SellAmount        string              `json:"sellAmount"`
+	AmountOut         string              `json:"amountOut"`
+	MinOut            string              `json:"minOut"`
+	Safety            quoteSafety         `json:"safety"`
+	UnsignedTx        unsignedTransaction `json:"unsignedTx"`
+	Route             []quoteRouteHop     `json:"route"`
+	Fees              quoteFees           `json:"fees"`
+	RequiredApprovals []requiredApproval  `json:"requiredApprovals"`
+	Source            string              `json:"source"`
 }
 
 type quoteRouteHop struct {
@@ -66,6 +68,11 @@ type quoteFeeItem struct {
 	Token     string `json:"token,omitempty"`
 	Bips      string `json:"bips,omitempty"`
 	Recipient string `json:"recipient,omitempty"`
+}
+
+type quoteSafety struct {
+	MinOut   string `json:"minOut"`
+	Deadline string `json:"deadline"`
 }
 
 type requiredApproval struct {
@@ -197,7 +204,13 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	normalized, err := normalizeQuoteResponse(req, quotePayload, approvalPayload)
+	swapPayload, err := uniswap.swap(r.Context(), quotePayload)
+	if err != nil {
+		handleQuoteProviderError(w, err)
+		return
+	}
+
+	normalized, err := normalizeQuoteResponse(req, quotePayload, swapPayload, approvalPayload)
 	if err != nil {
 		http.Error(w, "invalid quote payload from provider", http.StatusBadGateway)
 		return
