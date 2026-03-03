@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { WorkspaceModule } from '@/components/workspace/types';
+import { SIGNING_ONLY_DISCLAIMER_LINES } from '@/lib/wallet/transaction-guardrails';
 
 function metricPill(pair: string, price: string, delta: string, positive: boolean) {
   return (
@@ -92,6 +93,14 @@ export function ModuleContent({ module }: { module: WorkspaceModule }) {
         <Button type="button" className="trade-submit">
           Buy ETH
         </Button>
+        <div className="trade-disclaimer" role="note" aria-label="Wallet signing guardrails">
+          <p className="trade-disclaimer-title">Wallet signing only</p>
+          <ul className="trade-disclaimer-list">
+            {SIGNING_ONLY_DISCLAIMER_LINES.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
       </div>
     );
   }
@@ -152,4 +161,3 @@ export function ModuleContent({ module }: { module: WorkspaceModule }) {
 
   return <p className="placeholder-text">Drop strategy notes, KPI tiles or custom signals here.</p>;
 }
-

@@ -627,6 +627,32 @@ body {
   background: linear-gradient(180deg, #11b282, #0e8e68);
 }
 
+.trade-disclaimer {
+  display: grid;
+  gap: 0.4rem;
+  border: 1px solid #264050;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(23, 38, 50, 0.95), rgba(13, 22, 31, 0.95));
+  padding: 0.7rem 0.8rem;
+}
+
+.trade-disclaimer-title {
+  margin: 0;
+  color: #d9e8ff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.trade-disclaimer-list {
+  margin: 0;
+  padding-left: 1rem;
+  color: #9eb2cf;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
 .orderbook {
   display: grid;
   gap: 0.45rem;
