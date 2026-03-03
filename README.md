@@ -26,6 +26,20 @@ pnpm check
 
 For WalletConnect support in `apps/web`, set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in `.env`.
 
+Mock market data endpoints used by the UI:
+
+- `GET /api/mock/tokens?chain=hyperliquid`
+- `GET /api/mock/prices?symbols=ETH,BTC,USDC,SOL&chain=hyperliquid`
+- `GET /api/mock/balances?account=<wallet>&chain=hyperliquid`
+
+Flags in `.env`:
+
+- `MOCK_MARKET_DATA=true|false` (default `true`)
+- `MOCK_MARKET_DATA_JITTER=false|true` (default `false`)
+- `DEFAULT_CHAIN=hyperliquid`
+
+`/api/mock/prices` omits unknown symbols from the response map.
+
 ## Root scripts
 
 - `pnpm dev`: start the Next.js web app only
