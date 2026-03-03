@@ -56,6 +56,39 @@ func TestBuildUnsignedTransactionHandler(t *testing.T) {
 		strings.NewReader(`{"order":{"walletAddress":"0x1111","chainId":1,"symbol":"ETH/USDT","side":"buy","type":"limit","quantity":"1.5","limitPrice":"2845.32"}}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected valid JSON body: %v", err)
+	}
+
+	if body["signingPolicy"] != "client-signing-only" {
+		t.Fatalf("expected client-signing-only policy, got %v", body["signingPolicy"])
+	}
+
+	unsignedPayload, ok := body["unsignedTxPayload"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected unsignedTxPayload object, got %T", body["unsignedTxPayload"])
+	}
+
+	if unsignedPayload["walletAddress"] != "0x1111" {
+		t.Fatalf("expected walletAddress binding to be preserved, got %v", unsignedPayload["walletAddress"])
+	}
+
+	for _, forbiddenField := range []string{"from", "signature", "rawTransaction", "signedTransaction", "txHash"} {
+		if _, exists := unsignedPayload[forbiddenField]; exists {
+			t.Fatalf("expected unsigned payload to omit %s", forbiddenField)
+		}
+	}
+}
+
 func TestQuoteHandler(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -159,14 +192,14 @@ func TestQuoteHandler(t *testing.T) {
 	t.Setenv("UNISWAP_TRADING_API_KEY", "test-api-key")
 	t.Setenv("UNISWAP_TRADING_API_BASE_URL", upstream.URL)
 
-	body := bytes.NewBufferString(`{
+	reqBody := bytes.NewBufferString(`{
 		"chainId": 1,
 		"sellToken": "0x1111111111111111111111111111111111111111",
 		"buyToken": "0x2222222222222222222222222222222222222222",
 		"sellAmount": "1000000000000000000",
 		"wallet": "0xabc"
 	}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes", reqBody)
 	rr := httptest.NewRecorder()
 
 	NewMux().ServeHTTP(rr, req)
@@ -175,45 +208,13 @@ func TestQuoteHandler(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
 
-	var body map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-		t.Fatalf("expected valid JSON body: %v", err)
-	}
-
-	if body["signingPolicy"] != "client-signing-only" {
-		t.Fatalf("expected client-signing-only policy, got %v", body["signingPolicy"])
-	}
-
-	unsignedPayload, ok := body["unsignedTxPayload"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected unsignedTxPayload object, got %T", body["unsignedTxPayload"])
-	}
-
-	if unsignedPayload["walletAddress"] != "0x1111" {
-		t.Fatalf("expected walletAddress binding to be preserved, got %v", unsignedPayload["walletAddress"])
-	}
-
-	for _, forbiddenField := range []string{"from", "signature", "rawTransaction", "signedTransaction", "txHash"} {
-		if _, exists := unsignedPayload[forbiddenField]; exists {
-			t.Fatalf("expected unsigned payload to omit %s", forbiddenField)
-		}
-	}
-}
-
-func TestBuildUnsignedTransactionHandlerRejectsInvalidPayload(t *testing.T) {
-	req := httptest.NewRequest(
-		http.MethodPost,
-		"/api/v1/transactions/unsigned",
-		strings.NewReader(`{"order":{"walletAddress":"0x1111","chainId":1,"symbol":"ETH/USDT","side":"buy","type":"limit","quantity":"1.5"}}`),
-	)
-	req.Header.Set("Content-Type", "application/json")
 	var res map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &res); err != nil {
 		t.Fatalf("expected valid JSON body: %v", err)
 	}
-	quoteID, ok := res["quoteId"].(string)
-	if !ok || quoteID == "" {
-		t.Fatalf("expected quoteId to be a non-empty string, got %T (%v)", res["quoteId"], res["quoteId"])
+
+	if res["quoteId"] != "quote_uni_001" {
+		t.Fatalf("expected quoteId to be mapped, got %v", res["quoteId"])
 	}
 	if res["source"] != "uniswap" {
 		t.Fatalf("expected source=uniswap, got %v", res["source"])
@@ -269,6 +270,22 @@ func TestBuildUnsignedTransactionHandlerRejectsInvalidPayload(t *testing.T) {
 	requiredApprovals, ok := res["requiredApprovals"].([]any)
 	if !ok || len(requiredApprovals) != 1 {
 		t.Fatalf("expected exactly one required approval, got %v", res["requiredApprovals"])
+	}
+}
+
+func TestBuildUnsignedTransactionHandlerRejectsInvalidPayload(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/transactions/unsigned",
+		strings.NewReader(`{"order":{"walletAddress":"0x1111","chainId":1,"symbol":"ETH/USDT","side":"buy","type":"limit","quantity":"1.5"}}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
 	}
 }
 

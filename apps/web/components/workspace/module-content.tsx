@@ -151,7 +151,7 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
     if (ethPrice) {
       setPrice(ethPrice.price.toFixed(2));
     }
-  }, [ethPrice?.price]);
+  }, [ethPrice]);
 
   const handleTradeSubmit = async () => {
     if (!activeSlot) {
