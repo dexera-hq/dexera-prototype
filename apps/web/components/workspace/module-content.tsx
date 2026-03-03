@@ -1,5 +1,4 @@
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { OrderEntryBlock } from '@/components/workspace/order-entry-block';
 import type { WorkspaceModule } from '@/components/workspace/types';
 
 function metricPill(pair: string, price: string, delta: string, positive: boolean) {
@@ -57,43 +56,7 @@ export function ModuleContent({ module }: { module: WorkspaceModule }) {
   }
 
   if (module.kind === 'trade') {
-    return (
-      <div className="trade-panel">
-        <div className="trade-switch" role="tablist" aria-label="Trade mode">
-          <Button type="button" size="sm" className="trade-switch-active">
-            Buy
-          </Button>
-          <Button type="button" variant="soft" size="sm">
-            Sell
-          </Button>
-        </div>
-        <label>
-          Price
-          <Input defaultValue="2845.32" />
-        </label>
-        <label>
-          Amount (ETH)
-          <Input defaultValue="0.00" />
-        </label>
-        <div className="quick-split" role="group" aria-label="Allocation presets">
-          <Button type="button" variant="soft" size="sm">
-            25%
-          </Button>
-          <Button type="button" variant="soft" size="sm">
-            50%
-          </Button>
-          <Button type="button" variant="soft" size="sm">
-            75%
-          </Button>
-          <Button type="button" variant="soft" size="sm">
-            100%
-          </Button>
-        </div>
-        <Button type="button" className="trade-submit">
-          Buy ETH
-        </Button>
-      </div>
-    );
+    return <OrderEntryBlock />;
   }
 
   if (module.kind === 'orderbook') {
@@ -152,4 +115,3 @@ export function ModuleContent({ module }: { module: WorkspaceModule }) {
 
   return <p className="placeholder-text">Drop strategy notes, KPI tiles or custom signals here.</p>;
 }
-
