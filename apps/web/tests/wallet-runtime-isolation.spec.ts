@@ -6,7 +6,7 @@ import { getConnectorOptions } from '../lib/wallet/wallet-manager-logic';
 function createSlot(overrides: Partial<WalletSlot>): WalletSlot {
   return {
     id: 'slot-default',
-    address: '0x1111',
+    walletAddress: '0x1111',
     chainId: 1,
     connectorId: 'injected',
     label: 'Injected',

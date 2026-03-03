@@ -1,5 +1,5 @@
-import { connect, disconnect, getAccount, watchAccount } from '@wagmi/core';
 import { createConfig, createStorage, http } from 'wagmi';
+import { connect, disconnect, getAccount, watchAccount } from 'wagmi/actions';
 import { mainnet } from 'wagmi/chains';
 import { coinbaseWallet, injected, walletConnect } from 'wagmi/connectors';
 

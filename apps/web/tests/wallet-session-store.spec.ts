@@ -67,7 +67,7 @@ describe('wallet session store', () => {
   it('updates an existing slot by slot id without creating duplicates', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
       slotId: 'slot-1',
-      address: '0xAAAA',
+      walletAddress: '0xAAAA',
       chainId: 1,
       connectorId: 'injected',
       connectedAt: '2026-03-02T10:00:00.000Z',
@@ -75,7 +75,7 @@ describe('wallet session store', () => {
 
     const updated = upsertConnectedWallet(first.state, {
       slotId: 'slot-1',
-      address: '0xBBBB',
+      walletAddress: '0xBBBB',
       chainId: 999,
       connectorId: 'injected',
       label: 'Injected',
@@ -90,7 +90,7 @@ describe('wallet session store', () => {
       throw new Error('Expected the updated wallet slot to exist');
     }
     expect(updatedSlot.id).toBe('slot-1');
-    expect(updatedSlot.address).toBe('0xbbbb');
+    expect(updatedSlot.walletAddress).toBe('0xbbbb');
     expect(updatedSlot.chainId).toBe(999);
     expect(updatedSlot.label).toBe('Injected');
     expect(updated.state.activeSlotId).toBe(updatedSlot.id);
@@ -99,7 +99,7 @@ describe('wallet session store', () => {
   it('adds a new slot when a provided slot id does not exist, even if connector and address match', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
       slotId: 'slot-1',
-      address: '0xAAAA',
+      walletAddress: '0xAAAA',
       chainId: 1,
       connectorId: 'injected',
       connectedAt: '2026-03-02T10:00:00.000Z',
@@ -107,7 +107,7 @@ describe('wallet session store', () => {
 
     const second = upsertConnectedWallet(first.state, {
       slotId: 'slot-2',
-      address: '0xAAAA',
+      walletAddress: '0xAAAA',
       chainId: 1,
       connectorId: 'injected',
       connectedAt: '2026-03-02T10:30:00.000Z',
@@ -123,7 +123,7 @@ describe('wallet session store', () => {
   it('marks a slot disconnected without removing it', () => {
     const connected = upsertConnectedWallet(createEmptyWalletSessionState(), {
       slotId: 'slot-1',
-      address: '0x1111',
+      walletAddress: '0x1111',
       chainId: 1,
       connectorId: 'injected',
       connectedAt: '2026-03-02T10:00:00.000Z',

@@ -5,7 +5,7 @@ import { getConnectorOptions, isConnectorLocked } from '../lib/wallet/wallet-man
 
 const connectedInjectedSlot: WalletSlot = {
   id: 'slot-1',
-  address: '0x1111',
+  walletAddress: '0x1111',
   chainId: 1,
   connectorId: 'injected',
   label: 'Injected',

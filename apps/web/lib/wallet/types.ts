@@ -1,3 +1,5 @@
+import type { ChainId, Wallet } from '@dexera/shared-types';
+
 export type WalletSlotStatus = 'connected' | 'disconnected' | 'stale';
 
 export const WALLET_CONNECTOR_IDS = ['injected', 'coinbaseWalletSDK', 'walletConnect'] as const;
@@ -5,10 +7,8 @@ export type WalletConnectorId = (typeof WALLET_CONNECTOR_IDS)[number];
 
 export type WalletConnectorUnavailableReason = 'connector-in-use' | 'connector-disabled';
 
-export interface WalletSlot {
+export interface WalletSlot extends Wallet {
   id: string;
-  address: string;
-  chainId: number;
   connectorId: WalletConnectorId;
   label?: string;
   lastConnectedAt: string;
@@ -20,10 +20,8 @@ export interface WalletSessionState {
   activeSlotId: string | null;
 }
 
-export interface ConnectedWalletPayload {
+export interface ConnectedWalletPayload extends Wallet {
   slotId?: string;
-  address: string;
-  chainId: number;
   connectorId: WalletConnectorId;
   label?: string;
   connectedAt?: string;
@@ -34,6 +32,13 @@ export interface WalletConnectorOption {
   label: string;
   available: boolean;
   unavailableReason?: WalletConnectorUnavailableReason;
+}
+
+export interface TransactionSigningResult {
+  signedTransaction: string;
+  unsignedTxPayloadId: string;
+  walletAddress: string;
+  chainId: ChainId;
 }
 
 export type ConnectWalletReason =
