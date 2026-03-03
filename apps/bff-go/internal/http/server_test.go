@@ -67,8 +67,9 @@ func TestQuoteHandler(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &res); err != nil {
 		t.Fatalf("expected valid JSON body: %v", err)
 	}
-	if res["quoteId"] == "" {
-		t.Fatalf("expected quoteId to be set")
+	quoteID, ok := res["quoteId"].(string)
+	if !ok || quoteID == "" {
+		t.Fatalf("expected quoteId to be a non-empty string, got %T (%v)", res["quoteId"], res["quoteId"])
 	}
 	if res["source"] != "mock" {
 		t.Fatalf("expected source=mock, got %v", res["source"])
@@ -78,7 +79,8 @@ func TestQuoteHandler(t *testing.T) {
 func TestBuildTransactionHandler(t *testing.T) {
 	body := bytes.NewBufferString(`{
 		"quoteId": "quote_mock_001",
-		"wallet": "0xabc"
+		"wallet": "0xabc",
+		"chainId": 8453
 	}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/build", body)
 	rr := httptest.NewRecorder()
@@ -97,8 +99,13 @@ func TestBuildTransactionHandler(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected unsignedTx object in response")
 	}
-	if unsignedTx["to"] == "" {
-		t.Fatalf("expected unsignedTx.to to be set")
+	to, ok := unsignedTx["to"].(string)
+	if !ok || to == "" {
+		t.Fatalf("expected unsignedTx.to to be a non-empty string, got %T (%v)", unsignedTx["to"], unsignedTx["to"])
+	}
+	chainID, ok := unsignedTx["chainId"].(float64)
+	if !ok || int(chainID) != 8453 {
+		t.Fatalf("expected unsignedTx.chainId=8453, got %v", unsignedTx["chainId"])
 	}
 }
 
@@ -127,6 +134,42 @@ func TestPositionsHandler(t *testing.T) {
 
 func TestPositionsHandlerMissingWallet(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/positions", nil)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+}
+
+func TestQuoteHandlerRejectsUnknownFields(t *testing.T) {
+	body := bytes.NewBufferString(`{
+		"chainId": 1,
+		"sellToken": "ETH",
+		"buyToken": "USDC",
+		"sellAmount": "1000000000000000000",
+		"wallet": "0xabc",
+		"unexpected": "field"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes", body)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+}
+
+func TestBuildTransactionHandlerRejectsUnknownFields(t *testing.T) {
+	body := bytes.NewBufferString(`{
+		"quoteId": "quote_mock_001",
+		"wallet": "0xabc",
+		"chainId": 1,
+		"unexpected": "field"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/build", body)
 	rr := httptest.NewRecorder()
 
 	NewMux().ServeHTTP(rr, req)

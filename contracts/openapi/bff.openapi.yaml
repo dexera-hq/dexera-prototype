@@ -186,11 +186,14 @@ components:
       required:
         - quoteId
         - wallet
+        - chainId
       properties:
         quoteId:
           type: string
         wallet:
           type: string
+        chainId:
+          type: integer
     UnsignedTransaction:
       type: object
       additionalProperties: false

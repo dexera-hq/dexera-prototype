@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -43,6 +44,7 @@ type quoteResponse struct {
 type buildTransactionRequest struct {
 	QuoteID string `json:"quoteId"`
 	Wallet  string `json:"wallet"`
+	ChainID int    `json:"chainId"`
 }
 
 type unsignedTransaction struct {
@@ -123,7 +125,7 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req quoteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeStrictJSONBody(r, &req); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
@@ -152,11 +154,11 @@ func buildTransactionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req buildTransactionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeStrictJSONBody(r, &req); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
-	if req.QuoteID == "" || req.Wallet == "" {
+	if req.QuoteID == "" || req.Wallet == "" || req.ChainID <= 0 {
 		http.Error(w, "missing required fields", http.StatusBadRequest)
 		return
 	}
@@ -172,7 +174,7 @@ func buildTransactionHandler(w http.ResponseWriter, r *http.Request) {
 			GasLimit:             "250000",
 			MaxFeePerGas:         "35000000000",
 			MaxPriorityFeePerGas: "2000000000",
-			ChainID:              1,
+			ChainID:              req.ChainID,
 		},
 		Warnings:  []string{"Mock transaction: values are placeholders and not broadcastable"},
 		Simulated: false,
@@ -236,4 +238,19 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func decodeStrictJSONBody(r *http.Request, dst any) error {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return io.ErrUnexpectedEOF
+	}
+
+	return nil
 }

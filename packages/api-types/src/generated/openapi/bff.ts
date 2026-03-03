@@ -47,6 +47,7 @@ export interface BffQuoteResponse {
 export interface BffBuildTransactionRequest {
   quoteId: string;
   wallet: string;
+  chainId: number;
 }
 
 export interface BffUnsignedTransaction {
