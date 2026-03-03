@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test('home page renders draggable trading workspace', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /DEXERA/i })).toBeVisible();
+  await expect(page.getByTestId('app-brand')).toBeVisible();
 
   const moduleCards = page.getByTestId('module-card');
   const moduleTitles = page.getByTestId('module-title');

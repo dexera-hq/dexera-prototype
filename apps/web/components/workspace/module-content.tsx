@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import type { WorkspaceMarketDataState } from '@/components/workspace/use-workspace-market-data';
 import type { WorkspaceModule } from '@/components/workspace/types';
 import { buildUnsignedTransaction } from '@/lib/wallet/build-unsigned-transaction';
 import { sendRuntimeSlotTransaction } from '@/lib/wallet/multi-session-runtime';
@@ -91,9 +92,13 @@ function formatUsd(value: string): string {
   })}`;
 }
 
-function TradePanel() {
+function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
   const { activeSlot } = useWalletManager();
-  const [price, setPrice] = useState('2845.32');
+  const ethToken = marketData.tokens.find((token) => token.symbol.toUpperCase() === 'ETH');
+  const ethPrice = marketData.prices.ETH;
+  const amountLabel = `${ethToken?.symbol ?? 'ETH'} · ${ethToken?.decimals ?? 18} decimals`;
+
+  const [price, setPrice] = useState(() => (ethPrice ? ethPrice.price.toFixed(2) : '0.00'));
   const [amount, setAmount] = useState('0.10');
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [executionState, setExecutionState] = useState<TradeExecutionState>({
@@ -142,6 +147,12 @@ function TradePanel() {
     };
   }, [showValidationToast]);
 
+  useEffect(() => {
+    if (ethPrice) {
+      setPrice(ethPrice.price.toFixed(2));
+    }
+  }, [ethPrice?.price]);
+
   const handleTradeSubmit = async () => {
     if (!activeSlot) {
       setExecutionState({
@@ -167,7 +178,7 @@ function TradePanel() {
             side: 'buy',
             type: 'limit',
             quantity: amount.trim() || '0.10',
-            limitPrice: price.trim() || '2845.32',
+            limitPrice: price.trim() || (ethPrice ? ethPrice.price.toFixed(2) : '0.00'),
           },
         },
         {
@@ -224,7 +235,7 @@ function TradePanel() {
         <Input value={price} onChange={(event) => setPrice(event.target.value)} />
       </label>
       <label>
-        Amount (ETH)
+        Amount ({amountLabel})
         <Input value={amount} onChange={(event) => setAmount(event.target.value)} />
       </label>
       <div className="quick-split" role="group" aria-label="Allocation presets">
@@ -310,15 +321,22 @@ function TradePanel() {
               </div>
               <div className="trade-summary-row">
                 <span>Limit price</span>
-                <strong>{formatUsd(price || '2845.32')}</strong>
+                <strong>{formatUsd(price || (ethPrice ? ethPrice.price.toFixed(2) : '0.00'))}</strong>
               </div>
               <div className="trade-summary-row">
                 <span>Amount</span>
-                <strong>{amount || '0.10'} ETH</strong>
+                <strong>{amount || '0.10'} {ethToken?.symbol ?? 'ETH'}</strong>
               </div>
               <div className="trade-summary-row">
                 <span>Estimated notional</span>
-                <strong>{formatUsd(String((Number(price || '2845.32') || 0) * (Number(amount || '0.10') || 0)))}</strong>
+                <strong>
+                  {formatUsd(
+                    String(
+                      (Number(price || (ethPrice ? ethPrice.price.toFixed(2) : '0.00')) || 0) *
+                        (Number(amount || '0.10') || 0),
+                    ),
+                  )}
+                </strong>
               </div>
             </div>
 
@@ -366,9 +384,28 @@ function TradePanel() {
   );
 }
 
-function metricPill(pair: string, price: string, delta: string, positive: boolean) {
+const DEFAULT_SYMBOL_ORDER = ['ETH', 'BTC', 'USDC', 'SOL'];
+
+const USD_FORMATTER = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatUSD(value: number): string {
+  return USD_FORMATTER.format(value);
+}
+
+function metricPill(
+  key: string,
+  pair: string,
+  price: string,
+  delta: string,
+  positive: boolean,
+) {
   return (
-    <li className="ticker-pill">
+    <li className="ticker-pill" key={key}>
       <span>{pair}</span>
       <strong>{price}</strong>
       <em className={positive ? 'up' : 'down'}>{delta}</em>
@@ -376,104 +413,189 @@ function metricPill(pair: string, price: string, delta: string, positive: boolea
   );
 }
 
-export function ModuleContent({ module }: { module: WorkspaceModule }) {
+function deterministicDelta(symbol: string): { label: string; positive: boolean } {
+  const seed = symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const delta = ((seed % 700) - 350) / 100;
+  const positive = delta >= 0;
+  const label = `${positive ? '+' : ''}${delta.toFixed(2)}%`;
+  return { label, positive };
+}
+
+function resolveOverviewSymbols(marketData: WorkspaceMarketDataState): string[] {
+  if (marketData.tokens.length > 0) {
+    return marketData.tokens.slice(0, 4).map((token) => token.symbol.toUpperCase());
+  }
+  return DEFAULT_SYMBOL_ORDER;
+}
+
+function parseBalance(balance: string): number {
+  const parsed = Number.parseFloat(balance);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function renderMarketDataError(error: string | null) {
+  if (!error) {
+    return null;
+  }
+  return <p className="placeholder-text">{error}</p>;
+}
+
+type ModuleContentProps = {
+  module: WorkspaceModule;
+  marketData: WorkspaceMarketDataState;
+};
+
+export function ModuleContent({ module, marketData }: ModuleContentProps) {
+  const tokenBySymbol = new Map(
+    marketData.tokens.map((token) => [token.symbol.toUpperCase(), token] as const),
+  );
+
   if (module.kind === 'overview') {
+    const overviewSymbols = resolveOverviewSymbols(marketData);
     return (
-      <ul className="ticker-row">
-        {metricPill('ETH/USDT', '$2,845.32', '+3.24%', true)}
-        {metricPill('BTC/USDT', '$68,432.10', '+1.85%', true)}
-        {metricPill('SOL/USDT', '$142.67', '-2.14%', false)}
-        {metricPill('AVAX/USDT', '$38.92', '+5.67%', true)}
-      </ul>
+      <>
+        {renderMarketDataError(marketData.error)}
+        <ul className="ticker-row">
+          {overviewSymbols.map((symbol) => {
+            const spotPrice = marketData.prices[symbol];
+            const delta = deterministicDelta(symbol);
+            return metricPill(
+              symbol,
+              `${symbol}/USD`,
+              spotPrice ? formatUSD(spotPrice.price) : '--',
+              delta.label,
+              delta.positive,
+            );
+          })}
+        </ul>
+      </>
     );
   }
 
   if (module.kind === 'chart') {
+    const ethPrice = marketData.prices.ETH;
+    const delta = deterministicDelta('ETH');
+
     return (
-      <div className="chart-wrap">
-        <div className="chart-meta">
-          <p className="pair">ETH/USDT</p>
-          <p className="price">$2,845.32</p>
-          <p className="delta up">+3.24% (+$89.21)</p>
+      <>
+        {renderMarketDataError(marketData.error)}
+        <div className="chart-wrap">
+          <div className="chart-meta">
+            <p className="pair">ETH/USD</p>
+            <p className="price">{ethPrice ? formatUSD(ethPrice.price) : '--'}</p>
+            <p className={`delta ${delta.positive ? 'up' : 'down'}`}>{delta.label}</p>
+          </div>
+          <div className="chart-frame">
+            <svg viewBox="0 0 800 280" aria-hidden="true">
+              <defs>
+                <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="rgba(19, 201, 145, 0.36)" />
+                  <stop offset="100%" stopColor="rgba(19, 201, 145, 0)" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M0 250 C80 225, 130 210, 190 205 C260 200, 315 215, 370 190 C430 160, 500 120, 570 125 C640 130, 700 150, 800 70"
+                fill="none"
+                stroke="#13c991"
+                strokeWidth="3"
+              />
+              <path
+                d="M0 250 C80 225, 130 210, 190 205 C260 200, 315 215, 370 190 C430 160, 500 120, 570 125 C640 130, 700 150, 800 70 L800 280 L0 280 Z"
+                fill="url(#chartFill)"
+              />
+            </svg>
+          </div>
         </div>
-        <div className="chart-frame">
-          <svg viewBox="0 0 800 280" aria-hidden="true">
-            <defs>
-              <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgba(19, 201, 145, 0.36)" />
-                <stop offset="100%" stopColor="rgba(19, 201, 145, 0)" />
-              </linearGradient>
-            </defs>
-            <path
-              d="M0 250 C80 225, 130 210, 190 205 C260 200, 315 215, 370 190 C430 160, 500 120, 570 125 C640 130, 700 150, 800 70"
-              fill="none"
-              stroke="#13c991"
-              strokeWidth="3"
-            />
-            <path
-              d="M0 250 C80 225, 130 210, 190 205 C260 200, 315 215, 370 190 C430 160, 500 120, 570 125 C640 130, 700 150, 800 70 L800 280 L0 280 Z"
-              fill="url(#chartFill)"
-            />
-          </svg>
-        </div>
-      </div>
+      </>
     );
   }
 
   if (module.kind === 'trade') {
-    return <TradePanel />;
+    return (
+      <>
+        {renderMarketDataError(marketData.error)}
+        <TradePanel marketData={marketData} />
+      </>
+    );
   }
 
   if (module.kind === 'orderbook') {
+    const ethPrice = marketData.prices.ETH?.price ?? 0;
+    const bid = ethPrice > 0 ? ethPrice - 0.7 : 2845.1;
+    const ask = ethPrice > 0 ? ethPrice + 0.7 : 2846.8;
+
     return (
-      <div className="orderbook">
-        <div className="orderbook-row sell">
-          <span>2,847.50</span>
-          <span>2.458</span>
-          <span>6,997.02</span>
+      <>
+        {renderMarketDataError(marketData.error)}
+        <div className="orderbook">
+          <div className="orderbook-row sell">
+            <span>{ask.toFixed(2)}</span>
+            <span>2.458</span>
+            <span>{(ask * 2.458).toFixed(2)}</span>
+          </div>
+          <div className="orderbook-row sell">
+            <span>{(ask + 0.4).toFixed(2)}</span>
+            <span>1.192</span>
+            <span>{((ask + 0.4) * 1.192).toFixed(2)}</span>
+          </div>
+          <p className="spread">Spread: {(ask - bid).toFixed(2)}</p>
+          <div className="orderbook-row buy">
+            <span>{bid.toFixed(2)}</span>
+            <span>1.567</span>
+            <span>{(bid * 1.567).toFixed(2)}</span>
+          </div>
+          <div className="orderbook-row buy">
+            <span>{(bid - 0.4).toFixed(2)}</span>
+            <span>2.204</span>
+            <span>{((bid - 0.4) * 2.204).toFixed(2)}</span>
+          </div>
         </div>
-        <div className="orderbook-row sell">
-          <span>2,846.80</span>
-          <span>1.192</span>
-          <span>3,392.58</span>
-        </div>
-        <p className="spread">Spread: 0.40 (0.014%)</p>
-        <div className="orderbook-row buy">
-          <span>2,845.10</span>
-          <span>1.567</span>
-          <span>4,460.11</span>
-        </div>
-        <div className="orderbook-row buy">
-          <span>2,844.70</span>
-          <span>2.204</span>
-          <span>6,269.32</span>
-        </div>
-      </div>
+      </>
     );
   }
 
   if (module.kind === 'positions') {
+    const balances = marketData.balances;
+    const totalValue = balances.reduce((sum, balance) => {
+      const spotPrice = marketData.prices[balance.symbol.toUpperCase()]?.price ?? 0;
+      return sum + parseBalance(balance.balance) * spotPrice;
+    }, 0);
+
     return (
       <div className="positions">
+        {renderMarketDataError(marketData.error)}
         <div className="positions-pnl">
-          TOTAL PNL: <strong>+$1,079.78 (+3.21%)</strong>
+          TOTAL VALUE: <strong>{formatUSD(totalValue)}</strong>
         </div>
         <div className="positions-grid positions-head">
-          <span>Pair</span>
-          <span>Type</span>
-          <span>Entry</span>
-          <span>Current</span>
-          <span>Amount</span>
-          <span>PNL</span>
+          <span>Asset</span>
+          <span>Name</span>
+          <span>Decimals</span>
+          <span>Spot</span>
+          <span>Balance</span>
+          <span>Value</span>
         </div>
-        <div className="positions-grid">
-          <strong>ETH/USDT</strong>
-          <span className="tag">Long</span>
-          <span>$2,720.50</span>
-          <strong>$2,845.32</strong>
-          <span>1.5 ETH</span>
-          <strong className="up">+187.23</strong>
-        </div>
+        {balances.map((balance) => {
+          const symbol = balance.symbol.toUpperCase();
+          const token = tokenBySymbol.get(symbol);
+          const spotPrice = marketData.prices[symbol];
+          const numericBalance = parseBalance(balance.balance);
+          const usdValue = (spotPrice?.price ?? 0) * numericBalance;
+
+          return (
+            <div className="positions-grid" key={symbol}>
+              <strong>{symbol}</strong>
+              <span className="tag">{token?.name ?? 'Unknown asset'}</span>
+              <span>{token?.decimals ?? '--'}</span>
+              <strong>{spotPrice ? formatUSD(spotPrice.price) : '--'}</strong>
+              <span>{balance.balance}</span>
+              <strong className="up">{spotPrice ? formatUSD(usdValue) : '--'}</strong>
+            </div>
+          );
+        })}
+        {marketData.loading && balances.length === 0 ? (
+          <p className="placeholder-text">Loading balances...</p>
+        ) : null}
       </div>
     );
   }
