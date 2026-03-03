@@ -8,7 +8,7 @@ export function TerminalHeader() {
         <Button type="button" variant="soft" size="icon" className="icon-button" aria-label="Open navigation">
           &#9776;
         </Button>
-        <h1 className="brand">
+        <h1 className="brand" data-testid="app-brand">
           DEXERA <span>BETA</span>
         </h1>
       </div>

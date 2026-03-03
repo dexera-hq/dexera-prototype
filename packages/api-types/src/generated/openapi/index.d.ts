@@ -1,2 +1,2 @@
+// AUTO-GENERATED FILE. DO NOT EDIT.
 export * from './bff';
-//# sourceMappingURL=index.d.ts.map
