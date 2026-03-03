@@ -283,6 +283,76 @@ func TestQuoteHandlerReturnsBadGatewayWhenApprovalUpstreamFails(t *testing.T) {
 	}
 }
 
+func TestQuoteHandlerPassesThroughClientErrorWhenQuoteUpstreamFails(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/quote" {
+			http.Error(w, "unsupported token", http.StatusUnprocessableEntity)
+			return
+		}
+		http.Error(w, "unexpected path", http.StatusNotFound)
+	}))
+	defer upstream.Close()
+
+	t.Setenv("UNISWAP_TRADING_API_KEY", "test-api-key")
+	t.Setenv("UNISWAP_TRADING_API_BASE_URL", upstream.URL)
+
+	body := bytes.NewBufferString(`{
+		"chainId": 1,
+		"sellToken": "0x1111111111111111111111111111111111111111",
+		"buyToken": "0x2222222222222222222222222222222222222222",
+		"sellAmount": "1000000000000000000",
+		"wallet": "0xabc"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes", body)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status 422, got %d", rr.Code)
+	}
+}
+
+func TestQuoteHandlerPassesThroughClientErrorWhenApprovalUpstreamFails(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/quote":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"requestId": "quote_uni_001",
+				"quote": map[string]any{
+					"output": map[string]any{
+						"amount": "1234500000000000000",
+					},
+				},
+			})
+		case "/check_approval":
+			http.Error(w, "invalid spender", http.StatusBadRequest)
+		default:
+			http.Error(w, "unexpected path", http.StatusNotFound)
+		}
+	}))
+	defer upstream.Close()
+
+	t.Setenv("UNISWAP_TRADING_API_KEY", "test-api-key")
+	t.Setenv("UNISWAP_TRADING_API_BASE_URL", upstream.URL)
+
+	body := bytes.NewBufferString(`{
+		"chainId": 1,
+		"sellToken": "0x1111111111111111111111111111111111111111",
+		"buyToken": "0x2222222222222222222222222222222222222222",
+		"sellAmount": "1000000000000000000",
+		"wallet": "0xabc"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes", body)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+}
+
 func TestBuildTransactionHandler(t *testing.T) {
 	body := bytes.NewBufferString(`{
 		"quoteId": "quote_mock_001",

@@ -2,6 +2,7 @@ package http
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -332,12 +333,26 @@ func findStringDeep(root any, keys ...string) string {
 func findStringByKey(root any, key string) string {
 	switch typed := root.(type) {
 	case map[string]any:
-		for mapKey, mapValue := range typed {
-			if mapKey == key {
-				if asString := stringifyScalar(mapValue); asString != "" {
-					return asString
-				}
+		if mapValue, ok := typed[key]; ok {
+			if asString := stringifyScalar(mapValue); asString != "" {
+				return asString
 			}
+			if nested := findStringByKey(mapValue, key); nested != "" {
+				return nested
+			}
+		}
+
+		mapKeys := make([]string, 0, len(typed))
+		for mapKey := range typed {
+			if mapKey == key {
+				continue
+			}
+			mapKeys = append(mapKeys, mapKey)
+		}
+		sort.Strings(mapKeys)
+
+		for _, mapKey := range mapKeys {
+			mapValue := typed[mapKey]
 			if nested := findStringByKey(mapValue, key); nested != "" {
 				return nested
 			}

@@ -317,6 +317,10 @@ func decodeStrictJSONBody(r *http.Request, dst any) error {
 func handleQuoteProviderError(w http.ResponseWriter, err error) {
 	var upstreamErr *upstreamHTTPError
 	if errors.As(err, &upstreamErr) {
+		if upstreamErr.statusCode >= http.StatusBadRequest && upstreamErr.statusCode < http.StatusInternalServerError {
+			http.Error(w, "quote request rejected by provider", upstreamErr.statusCode)
+			return
+		}
 		http.Error(w, "quote provider request failed", http.StatusBadGateway)
 		return
 	}
