@@ -2,10 +2,12 @@
 
 import { WorkspaceModuleCard } from '@/components/workspace/module-card';
 import { TerminalHeader } from '@/components/workspace/terminal-header';
+import { useWorkspaceMarketData } from '@/components/workspace/use-workspace-market-data';
 import { useWorkspaceModules } from '@/components/workspace/use-workspace-modules';
 import { WorkspaceToolbar } from '@/components/workspace/workspace-toolbar';
 
 export function TradingWorkspace() {
+  const marketData = useWorkspaceMarketData();
   const {
     modules,
     draggingId,
@@ -36,6 +38,7 @@ export function TradingWorkspace() {
             <WorkspaceModuleCard
               key={module.id}
               module={module}
+              marketData={marketData}
               draggingId={draggingId}
               dropTargetId={dropTargetId}
               onRemove={removeModule}
@@ -50,4 +53,3 @@ export function TradingWorkspace() {
     </main>
   );
 }
-
