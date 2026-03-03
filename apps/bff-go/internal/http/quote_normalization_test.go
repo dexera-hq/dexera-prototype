@@ -92,6 +92,49 @@ func TestNormalizeQuoteResponseMapsUnsignedTxAliases(t *testing.T) {
 	}
 }
 
+func TestNormalizeQuoteResponseFallsBackWhenSwapIsNonTransactional(t *testing.T) {
+	req := quoteRequest{
+		ChainID:    8453,
+		SellToken:  "0x1111111111111111111111111111111111111111",
+		BuyToken:   "0x2222222222222222222222222222222222222222",
+		SellAmount: "1000000000000000000",
+	}
+	quotePayload := map[string]any{
+		"requestId": "quote_uni_002",
+		"quote": map[string]any{
+			"output": map[string]any{
+				"amount": "1234500000000000000",
+			},
+		},
+		"minOut":   "1220000000000000000",
+		"deadline": "1735689600",
+	}
+	swapPayload := map[string]any{
+		"swap": map[string]any{
+			"routeType": "exactInput",
+		},
+		"tx": map[string]any{
+			"to":                   "0x5555555555555555555555555555555555555555",
+			"data":                 "0xabcdef",
+			"value":                "0",
+			"gasLimit":             "250000",
+			"maxFeePerGas":         "35000000000",
+			"maxPriorityFeePerGas": "2000000000",
+		},
+	}
+
+	normalized, err := normalizeQuoteResponse(req, quotePayload, swapPayload, nil)
+	if err != nil {
+		t.Fatalf("expected normalization success, got %v", err)
+	}
+	if normalized.UnsignedTx.To != "0x5555555555555555555555555555555555555555" {
+		t.Fatalf("expected fallback to tx alias, got %q", normalized.UnsignedTx.To)
+	}
+	if normalized.UnsignedTx.Data != "0xabcdef" {
+		t.Fatalf("expected fallback tx data, got %q", normalized.UnsignedTx.Data)
+	}
+}
+
 func TestNormalizeQuoteResponseRejectsNonNumericDeadline(t *testing.T) {
 	req := quoteRequest{
 		ChainID:    1,

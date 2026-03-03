@@ -94,18 +94,36 @@ func normalizeUnsignedTransactionFromPayload(
 	quotePayload map[string]any,
 	swapPayload map[string]any,
 ) (unsignedTransaction, bool) {
-	txRaw := firstAny(
+	txCandidates := []any{
 		anyAtPath(swapPayload, "swap"),
+		anyAtPath(swapPayload, "swap", "tx"),
+		anyAtPath(swapPayload, "swap", "transaction"),
 		anyAtPath(swapPayload, "tx"),
 		anyAtPath(swapPayload, "transaction"),
 		anyAtPath(quotePayload, "swap"),
+		anyAtPath(quotePayload, "swap", "tx"),
+		anyAtPath(quotePayload, "swap", "transaction"),
 		anyAtPath(quotePayload, "tx"),
 		anyAtPath(quotePayload, "quote", "tx"),
 		anyAtPath(quotePayload, "transaction"),
 		anyAtPath(quotePayload, "quote", "transaction"),
 		anyAtPath(quotePayload, "swapTx"),
 		anyAtPath(quotePayload, "quote", "swapTx"),
-	)
+	}
+
+	for _, txRaw := range txCandidates {
+		if normalized, ok := normalizeUnsignedTransactionFromAny(req, txRaw); ok {
+			return normalized, true
+		}
+	}
+
+	return unsignedTransaction{}, false
+}
+
+func normalizeUnsignedTransactionFromAny(
+	req quoteRequest,
+	txRaw any,
+) (unsignedTransaction, bool) {
 	txMap, ok := txRaw.(map[string]any)
 	if !ok {
 		return unsignedTransaction{}, false
