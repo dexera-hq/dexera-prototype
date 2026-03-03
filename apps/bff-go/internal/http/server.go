@@ -21,6 +21,7 @@ func NewMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/api/v1/placeholder", placeholderHandler)
+	mux.HandleFunc("/api/v1/transactions/unsigned", buildUnsignedTransactionHandler)
 	return mux
 }
 
