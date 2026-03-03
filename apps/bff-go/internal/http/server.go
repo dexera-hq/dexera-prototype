@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -30,15 +31,59 @@ type quoteRequest struct {
 }
 
 type quoteResponse struct {
-	QuoteID      string `json:"quoteId"`
-	ChainID      int    `json:"chainId"`
-	SellToken    string `json:"sellToken"`
-	BuyToken     string `json:"buyToken"`
-	SellAmount   string `json:"sellAmount"`
-	EstimatedOut string `json:"estimatedOut"`
-	Price        string `json:"price"`
-	ExpiresAt    string `json:"expiresAt"`
-	Source       string `json:"source"`
+	QuoteID           string             `json:"quoteId"`
+	ChainID           int                `json:"chainId"`
+	SellToken         string             `json:"sellToken"`
+	BuyToken          string             `json:"buyToken"`
+	SellAmount        string             `json:"sellAmount"`
+	AmountOut         string             `json:"amountOut"`
+	MinOut            string             `json:"minOut"`
+	Route             []quoteRouteHop    `json:"route"`
+	Fees              quoteFees          `json:"fees"`
+	RequiredApprovals []requiredApproval `json:"requiredApprovals"`
+	Source            string             `json:"source"`
+}
+
+type quoteRouteHop struct {
+	PathIndex int    `json:"pathIndex"`
+	HopIndex  int    `json:"hopIndex"`
+	Type      string `json:"type"`
+	Address   string `json:"address,omitempty"`
+	TokenIn   string `json:"tokenIn,omitempty"`
+	TokenOut  string `json:"tokenOut,omitempty"`
+}
+
+type quoteFees struct {
+	GasFee      string         `json:"gasFee,omitempty"`
+	GasFeeQuote string         `json:"gasFeeQuote,omitempty"`
+	GasFeeUSD   string         `json:"gasFeeUsd,omitempty"`
+	Items       []quoteFeeItem `json:"items"`
+}
+
+type quoteFeeItem struct {
+	Type      string `json:"type,omitempty"`
+	Amount    string `json:"amount,omitempty"`
+	Token     string `json:"token,omitempty"`
+	Bips      string `json:"bips,omitempty"`
+	Recipient string `json:"recipient,omitempty"`
+}
+
+type requiredApproval struct {
+	Token          string      `json:"token"`
+	Spender        string      `json:"spender,omitempty"`
+	RequiredAmount string      `json:"requiredAmount"`
+	ApprovalTx     approvalTx  `json:"approvalTx"`
+	CancelTx       *approvalTx `json:"cancelTx,omitempty"`
+}
+
+type approvalTx struct {
+	To                   string `json:"to"`
+	From                 string `json:"from,omitempty"`
+	Data                 string `json:"data"`
+	Value                string `json:"value"`
+	GasLimit             string `json:"gasLimit,omitempty"`
+	MaxFeePerGas         string `json:"maxFeePerGas,omitempty"`
+	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas,omitempty"`
 }
 
 type buildTransactionRequest struct {
@@ -134,17 +179,31 @@ func quoteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, quoteResponse{
-		QuoteID:      "quote_mock_001",
-		ChainID:      req.ChainID,
-		SellToken:    req.SellToken,
-		BuyToken:     req.BuyToken,
-		SellAmount:   req.SellAmount,
-		EstimatedOut: "1234500000000000000",
-		Price:        "1.2345",
-		ExpiresAt:    time.Now().UTC().Add(30 * time.Second).Format(time.RFC3339),
-		Source:       "mock",
-	})
+	uniswap, err := newUniswapClientFromEnv()
+	if err != nil {
+		http.Error(w, "uniswap integration is not configured", http.StatusInternalServerError)
+		return
+	}
+
+	quotePayload, err := uniswap.quote(r.Context(), req)
+	if err != nil {
+		handleQuoteProviderError(w, err)
+		return
+	}
+
+	approvalPayload, err := uniswap.checkApproval(r.Context(), req, quotePayload)
+	if err != nil {
+		handleQuoteProviderError(w, err)
+		return
+	}
+
+	normalized, err := normalizeQuoteResponse(req, quotePayload, approvalPayload)
+	if err != nil {
+		http.Error(w, "invalid quote payload from provider", http.StatusBadGateway)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, normalized)
 }
 
 func buildTransactionHandler(w http.ResponseWriter, r *http.Request) {
@@ -253,4 +312,17 @@ func decodeStrictJSONBody(r *http.Request, dst any) error {
 	}
 
 	return nil
+}
+
+func handleQuoteProviderError(w http.ResponseWriter, err error) {
+	var upstreamErr *upstreamHTTPError
+	if errors.As(err, &upstreamErr) {
+		if upstreamErr.statusCode >= http.StatusBadRequest && upstreamErr.statusCode < http.StatusInternalServerError {
+			http.Error(w, "quote request rejected by provider", upstreamErr.statusCode)
+			return
+		}
+		http.Error(w, "quote provider request failed", http.StatusBadGateway)
+		return
+	}
+	http.Error(w, "failed to fetch quote from provider", http.StatusBadGateway)
 }
