@@ -5,7 +5,7 @@ Polyglot monorepo scaffold for Dexera with a TypeScript/Next.js-first frontend a
 ## Workspace layout
 
 - `apps/web`: Next.js TypeScript frontend (app router)
-- `apps/bff-go`: Go BFF with `/health` and `/api/v1/placeholder`
+- `apps/bff-go`: Go BFF with `/health`, `/api/v1/placeholder`, and Uniswap-backed `/api/v1/quotes`
 - `services/market-data`: Rust scaffold with health/ping behavior
 - `services/execution`: Rust scaffold with health/ping behavior
 - `services/portfolio`: Rust scaffold with health/ping behavior
@@ -25,6 +25,11 @@ pnpm check
 ```
 
 For WalletConnect support in `apps/web`, set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in `.env`.
+
+To enable aggregator quote requests in the Go BFF, set:
+
+- `UNISWAP_TRADING_API_KEY=<your_api_key>`
+- `UNISWAP_TRADING_API_BASE_URL=https://trade-api.gateway.uniswap.org/v1` (optional override)
 
 Mock market data endpoints used by the UI:
 
@@ -96,7 +101,7 @@ pnpm dev:api:docker:down
 Notes:
 
 - `pnpm dev:api:docker` resets stack state before startup (`down -v`) for deterministic demos.
-- Redis/Postgres stubs are optional infrastructure placeholders. Current BFF endpoints do not require them yet.
+- Redis/Postgres stubs are optional infrastructure placeholders. Current BFF endpoints do not require them.
 
 ## CI
 

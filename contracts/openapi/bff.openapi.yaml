@@ -34,7 +34,7 @@ paths:
                 $ref: '#/components/schemas/PlaceholderResponse'
   /api/v1/quotes:
     post:
-      summary: Request a trade quote (mock)
+      summary: Request a normalized Uniswap trade quote
       operationId: postQuote
       tags:
         - trading
@@ -156,9 +156,11 @@ components:
         - sellToken
         - buyToken
         - sellAmount
-        - estimatedOut
-        - price
-        - expiresAt
+        - amountOut
+        - minOut
+        - route
+        - fees
+        - requiredApprovals
         - source
       properties:
         quoteId:
@@ -171,15 +173,113 @@ components:
           type: string
         sellAmount:
           type: string
-        estimatedOut:
+        amountOut:
           type: string
-        price:
+        minOut:
           type: string
-        expiresAt:
-          type: string
-          format: date-time
+        route:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuoteRouteHop'
+        fees:
+          $ref: '#/components/schemas/QuoteFees'
+        requiredApprovals:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequiredApproval'
         source:
           type: string
+          enum: [uniswap]
+    QuoteRouteHop:
+      type: object
+      additionalProperties: false
+      required:
+        - pathIndex
+        - hopIndex
+        - type
+      properties:
+        pathIndex:
+          type: integer
+        hopIndex:
+          type: integer
+        type:
+          type: string
+        address:
+          type: string
+        tokenIn:
+          type: string
+        tokenOut:
+          type: string
+    QuoteFeeItem:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+        amount:
+          type: string
+        token:
+          type: string
+        bips:
+          type: string
+        recipient:
+          type: string
+    QuoteFees:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        gasFee:
+          type: string
+        gasFeeQuote:
+          type: string
+        gasFeeUsd:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuoteFeeItem'
+    ApprovalTx:
+      type: object
+      additionalProperties: false
+      required:
+        - to
+        - data
+        - value
+      properties:
+        to:
+          type: string
+        from:
+          type: string
+        data:
+          type: string
+        value:
+          type: string
+        gasLimit:
+          type: string
+        maxFeePerGas:
+          type: string
+        maxPriorityFeePerGas:
+          type: string
+    RequiredApproval:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+        - requiredAmount
+        - approvalTx
+      properties:
+        token:
+          type: string
+        spender:
+          type: string
+        requiredAmount:
+          type: string
+        approvalTx:
+          $ref: '#/components/schemas/ApprovalTx'
+        cancelTx:
+          $ref: '#/components/schemas/ApprovalTx'
     BuildTransactionRequest:
       type: object
       additionalProperties: false

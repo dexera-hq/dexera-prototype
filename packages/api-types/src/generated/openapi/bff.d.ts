@@ -31,10 +31,54 @@ export interface BffQuoteResponse {
   sellToken: string;
   buyToken: string;
   sellAmount: string;
-  estimatedOut: string;
-  price: string;
-  expiresAt: string;
-  source: string;
+  amountOut: string;
+  minOut: string;
+  route: BffQuoteRouteHop[];
+  fees: BffQuoteFees;
+  requiredApprovals: BffRequiredApproval[];
+  source: 'uniswap';
+}
+
+export interface BffQuoteRouteHop {
+  pathIndex: number;
+  hopIndex: number;
+  type: string;
+  address?: string;
+  tokenIn?: string;
+  tokenOut?: string;
+}
+
+export interface BffQuoteFeeItem {
+  type?: string;
+  amount?: string;
+  token?: string;
+  bips?: string;
+  recipient?: string;
+}
+
+export interface BffQuoteFees {
+  gasFee?: string;
+  gasFeeQuote?: string;
+  gasFeeUsd?: string;
+  items: BffQuoteFeeItem[];
+}
+
+export interface BffApprovalTx {
+  to: string;
+  from?: string;
+  data: string;
+  value: string;
+  gasLimit?: string;
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
+}
+
+export interface BffRequiredApproval {
+  token: string;
+  spender?: string;
+  requiredAmount: string;
+  approvalTx: BffApprovalTx;
+  cancelTx?: BffApprovalTx;
 }
 
 export interface BffBuildTransactionRequest {
