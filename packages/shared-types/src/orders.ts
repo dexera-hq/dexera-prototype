@@ -84,6 +84,24 @@ export interface UnsignedTxPayload {
   maxFeePerGas?: string;
   maxPriorityFeePerGas?: string;
   nonce?: number;
+  from?: never;
+  signature?: never;
+  rawTransaction?: never;
+  signedTransaction?: never;
+  txHash?: never;
+}
+
+export type TransactionSigningPolicy = 'client-signing-only';
+
+export interface BuildUnsignedTransactionRequest {
+  order: OrderRequest;
+}
+
+export interface BuildUnsignedTransactionResponse {
+  orderId: string;
+  signingPolicy: TransactionSigningPolicy;
+  disclaimer: string;
+  unsignedTxPayload: UnsignedTxPayload;
 }
 
 export interface Fill extends Wallet {
