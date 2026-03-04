@@ -1,16 +1,23 @@
 // AUTO-GENERATED FILE. DO NOT EDIT.
 // Source: contracts/openapi/bff.openapi.yaml
 
-export type BffPublicPath = '/health' | '/api/v1/placeholder' | '/api/v1/quotes' | '/api/v1/transactions/build' | '/api/v1/transactions/unsigned' | '/api/v1/positions';
+export type BffPublicPath = '/health' | '/api/v1/placeholder' | '/api/v1/wallet/challenge' | '/api/v1/wallet/verify' | '/api/v1/perp/orders/preview' | '/api/v1/perp/actions/unsigned' | '/api/v1/perp/positions';
 
 export const BFF_PUBLIC_PATHS = [
   "/health",
   "/api/v1/placeholder",
-  "/api/v1/quotes",
-  "/api/v1/transactions/build",
-  "/api/v1/transactions/unsigned",
-  "/api/v1/positions"
+  "/api/v1/wallet/challenge",
+  "/api/v1/wallet/verify",
+  "/api/v1/perp/orders/preview",
+  "/api/v1/perp/actions/unsigned",
+  "/api/v1/perp/positions"
 ] as const;
+
+export type BffVenueId = 'hyperliquid' | 'aster';
+export type BffPerpOrderSide = 'buy' | 'sell';
+export type BffPerpOrderType = 'market' | 'limit';
+export type BffPerpPositionDirection = 'long' | 'short';
+export type BffPerpPositionStatus = 'open' | 'closed' | 'liquidated';
 
 export interface BffHealthResponse {
   status: 'ok';
@@ -23,160 +30,105 @@ export interface BffPlaceholderResponse {
   source: string;
 }
 
-export interface BffQuoteRequest {
-  chainId: number;
-  sellToken: string;
-  buyToken: string;
-  sellAmount: string;
-  wallet: string;
-  slippageBps?: number;
-  affiliateTag?: string;
+export interface BffWalletChallengeRequest {
+  address: string;
 }
 
-export interface BffQuoteResponse {
-  quoteId: string;
-  chainId: number;
-  sellToken: string;
-  buyToken: string;
-  sellAmount: string;
-  amountOut: string;
-  minOut: string;
-  safety: BffQuoteSafety;
-  unsignedTx: BffUnsignedTransaction;
-  route: BffQuoteRouteHop[];
-  fees: BffQuoteFees;
-  requiredApprovals: BffRequiredApproval[];
-  source: 'uniswap';
+export interface BffWalletChallengeResponse {
+  challengeId: string;
+  message: string;
+  issuedAt: string;
+  expiresAt: string;
 }
 
-export interface BffQuoteRouteHop {
-  pathIndex: number;
-  hopIndex: number;
-  type: string;
-  address?: string;
-  tokenIn?: string;
-  tokenOut?: string;
+export interface BffWalletVerifyRequest {
+  address: string;
+  challengeId: string;
+  signature: string;
+  venue: BffVenueId;
 }
 
-export interface BffQuoteFeeItem {
-  type?: string;
-  amount?: string;
-  token?: string;
-  bips?: string;
-  recipient?: string;
-}
-
-export interface BffQuoteFees {
-  gasFee?: string;
-  gasFeeQuote?: string;
-  gasFeeUsd?: string;
-  items: BffQuoteFeeItem[];
-}
-
-export interface BffQuoteSafety {
-  minOut: string;
-  deadline: string;
-}
-
-export interface BffApprovalTx {
-  to: string;
-  from?: string;
-  data: string;
-  value: string;
-  gasLimit?: string;
-  maxFeePerGas?: string;
-  maxPriorityFeePerGas?: string;
-}
-
-export interface BffRequiredApproval {
-  token: string;
-  spender?: string;
-  requiredAmount: string;
-  approvalTx: BffApprovalTx;
-  cancelTx?: BffApprovalTx;
-}
-
-export interface BffBuildTransactionRequest {
-  quoteId: string;
-  wallet: string;
-  chainId: number;
-}
-
-export interface BffOrderRequest {
-  walletAddress: string;
-  chainId: number;
-  symbol: string;
-  side: 'buy' | 'sell';
-  type: 'market' | 'limit';
-  quantity: string;
-  clientOrderId?: string;
-  limitPrice?: string;
-}
-
-export interface BffBuildUnsignedTransactionRequest {
-  order: BffOrderRequest;
-}
-
-export interface BffUnsignedTransaction {
-  to: string;
-  data: string;
-  value: string;
-  gasLimit: string;
-  maxFeePerGas: string;
-  maxPriorityFeePerGas: string;
-  chainId: number;
-}
-
-export interface BffUnsignedTxPayload {
-  id: string;
-  walletAddress: string;
-  chainId: number;
-  kind: 'evm_transaction';
-  to: string;
-  data: string;
-  value: string;
-  gasLimit?: string;
-  maxFeePerGas?: string;
-  maxPriorityFeePerGas?: string;
-  nonce?: number;
-}
-
-export interface BffBuildTransactionResponse {
-  buildId: string;
-  quoteId: string;
-  wallet: string;
-  unsignedTx: BffUnsignedTransaction;
-  warnings: string[];
-  simulated: boolean;
+export interface BffWalletVerifyResponse {
+  ownershipVerified: boolean;
+  venue: BffVenueId;
+  eligible: boolean;
+  reason: string;
+  checkedAt: string;
   source: string;
 }
 
-export interface BffBuildUnsignedTransactionResponse {
+export interface BffPerpOrderRequest {
+  accountId: string;
+  venue: BffVenueId;
+  instrument: string;
+  side: BffPerpOrderSide;
+  type: BffPerpOrderType;
+  size: string;
+  limitPrice?: string;
+  leverage?: string;
+  reduceOnly?: boolean;
+  clientOrderId?: string;
+}
+
+export interface BffBuildUnsignedActionRequest {
+  order: BffPerpOrderRequest;
+}
+
+export interface BffPerpOrderPreviewResponse {
+  previewId: string;
+  accountId: string;
+  venue: BffVenueId;
+  instrument: string;
+  side: BffPerpOrderSide;
+  type: BffPerpOrderType;
+  size: string;
+  limitPrice?: string;
+  markPrice?: string;
+  estimatedNotional: string;
+  estimatedFee: string;
+  expiresAt: string;
+  source: string;
+}
+
+export interface BffUnsignedActionPayload {
+  id: string;
+  accountId: string;
+  venue: BffVenueId;
+  kind: 'perp_order_action';
+  action: Record<string, unknown>;
+}
+
+export interface BffBuildUnsignedActionResponse {
   orderId: string;
   signingPolicy: 'client-signing-only';
   disclaimer: string;
-  unsignedTxPayload: BffUnsignedTxPayload;
+  unsignedActionPayload: BffUnsignedActionPayload;
 }
 
-export interface BffPosition {
+export interface BffPerpPosition {
   positionId: string;
-  chainId: number;
-  protocol: string;
-  asset: string;
-  balance: string;
-  usdValue: string;
+  accountId: string;
+  venue: BffVenueId;
+  instrument: string;
+  direction: BffPerpPositionDirection;
+  status: BffPerpPositionStatus;
+  size: string;
+  entryPrice: string;
+  markPrice: string;
+  notionalValue: string;
+  leverage?: string;
   unrealizedPnlUsd: string;
   lastUpdatedAt: string;
 }
 
-export interface BffPositionsResponse {
-  wallet: string;
-  chainId?: number;
-  positions: BffPosition[];
+export interface BffPerpPositionsResponse {
+  accountId: string;
+  venue: BffVenueId;
+  positions: BffPerpPosition[];
   source: string;
 }
 
 export const BFF_OPENAPI_INFO = {
   title: "Dexera BFF API",
-  version: "0.1.0",
+  version: "0.2.0",
 } as const;

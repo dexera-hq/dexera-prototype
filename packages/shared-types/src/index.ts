@@ -1,4 +1,5 @@
-export type ChainId = number;
+export type VenueId = 'hyperliquid' | 'aster';
+
 export * from './orders';
 export * from './positions';
 export * from './quotes';

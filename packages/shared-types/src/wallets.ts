@@ -1,8 +1,8 @@
-import type { ChainId } from './index.js';
+import type { VenueId } from './index.js';
 
 export interface Wallet {
-  walletAddress: string;
-  chainId: ChainId;
+  accountId: string;
+  venue: VenueId;
 }
 
 export interface ConnectedWallet extends Wallet {

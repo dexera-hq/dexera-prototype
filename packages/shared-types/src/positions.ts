@@ -1,9 +1,8 @@
 import type { Wallet } from './wallets.js';
 
-export type PositionSide = 'long' | 'short';
 export type PositionStatus = 'open' | 'closed' | 'liquidated';
 
-export interface PositionPnlPlaceholder {
+export interface PositionPnlSnapshot {
   realizedPnl?: string;
   unrealizedPnl?: string;
   realizedPnlPct?: string;
@@ -11,18 +10,20 @@ export interface PositionPnlPlaceholder {
   asOf: string;
 }
 
-export interface Position extends Wallet {
+export interface PerpPosition extends Wallet {
   id: string;
-  symbol: string;
-  side: PositionSide;
+  instrument: string;
+  direction: 'long' | 'short';
   status: PositionStatus;
-  quantity: string;
+  size: string;
   entryPrice: string;
   markPrice?: string;
   notionalValue?: string;
   leverage?: string;
+  liquidationPrice?: string;
+  marginMode?: 'cross' | 'isolated';
   openedAt: string;
   updatedAt: string;
   closedAt?: string;
-  pnl?: PositionPnlPlaceholder;
+  pnl?: PositionPnlSnapshot;
 }

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Dexera BFF API
-  version: 0.1.0
+  version: 0.2.0
   description: Public API exposed by Dexera Go BFF.
 servers:
   - url: http://localhost:8080
@@ -32,10 +32,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlaceholderResponse'
-  /api/v1/quotes:
+  /api/v1/wallet/challenge:
     post:
-      summary: Request a normalized Uniswap trade quote
-      operationId: postQuote
+      summary: Create a wallet ownership challenge message
+      operationId: postWalletChallenge
+      tags:
+        - wallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletChallengeRequest'
+      responses:
+        '200':
+          description: Wallet challenge response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletChallengeResponse'
+  /api/v1/wallet/verify:
+    post:
+      summary: Verify wallet ownership signature and venue eligibility
+      operationId: postWalletVerify
+      tags:
+        - wallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletVerifyRequest'
+      responses:
+        '200':
+          description: Wallet verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletVerifyResponse'
+  /api/v1/perp/orders/preview:
+    post:
+      summary: Preview a perpetual order before signing
+      operationId: postPerpOrderPreview
       tags:
         - trading
       requestBody:
@@ -43,19 +81,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/QuoteRequest'
+              $ref: '#/components/schemas/BuildUnsignedActionRequest'
       responses:
         '200':
-          description: Quote response
+          description: Perp order preview response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/QuoteResponse'
-  /api/v1/transactions/build:
+                $ref: '#/components/schemas/PerpOrderPreviewResponse'
+  /api/v1/perp/actions/unsigned:
     post:
-      summary: Build unsigned transaction from quote (mock)
-      operationId: postBuildTransaction
-      deprecated: true
+      summary: Build an unsigned perpetual action for client-side wallet submission
+      operationId: postBuildUnsignedPerpAction
       tags:
         - trading
       requestBody:
@@ -63,59 +100,48 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BuildTransactionRequest'
+              $ref: '#/components/schemas/BuildUnsignedActionRequest'
       responses:
         '200':
-          description: Unsigned transaction response
+          description: Unsigned perp action payload response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BuildTransactionResponse'
-  /api/v1/transactions/unsigned:
-    post:
-      summary: Build an unsigned transaction for client-side wallet submission
-      operationId: postBuildUnsignedTransaction
-      tags:
-        - trading
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BuildUnsignedTransactionRequest'
-      responses:
-        '200':
-          description: Unsigned transaction payload response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BuildUnsignedTransactionResponse'
-  /api/v1/positions:
+                $ref: '#/components/schemas/BuildUnsignedActionResponse'
+  /api/v1/perp/positions:
     get:
-      summary: Retrieve positions for a wallet (mock)
-      operationId: getPositions
+      summary: Retrieve perpetual positions for an account
+      operationId: getPerpPositions
       tags:
         - portfolio
       parameters:
         - in: query
-          name: wallet
+          name: accountId
           required: true
           schema:
             type: string
         - in: query
-          name: chainId
+          name: venue
+          required: true
+          schema:
+            $ref: '#/components/schemas/VenueId'
+        - in: query
+          name: instrument
           required: false
           schema:
-            type: integer
+            type: string
       responses:
         '200':
-          description: Wallet positions
+          description: Account positions
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PositionsResponse'
+                $ref: '#/components/schemas/PerpPositionsResponse'
 components:
   schemas:
+    VenueId:
+      type: string
+      enum: [hyperliquid, aster]
     HealthResponse:
       type: object
       additionalProperties: false
@@ -143,264 +169,90 @@ components:
           type: string
         source:
           type: string
-    QuoteRequest:
+    WalletChallengeRequest:
       type: object
       additionalProperties: false
       required:
-        - chainId
-        - sellToken
-        - buyToken
-        - sellAmount
-        - wallet
+        - address
       properties:
-        chainId:
-          type: integer
-        sellToken:
-          type: string
-        buyToken:
-          type: string
-        sellAmount:
-          type: string
-        wallet:
-          type: string
-        slippageBps:
-          type: integer
-        affiliateTag:
-          type: string
-    QuoteResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - quoteId
-        - chainId
-        - sellToken
-        - buyToken
-        - sellAmount
-        - amountOut
-        - minOut
-        - safety
-        - unsignedTx
-        - route
-        - fees
-        - requiredApprovals
-        - source
-      properties:
-        quoteId:
-          type: string
-        chainId:
-          type: integer
-        sellToken:
-          type: string
-        buyToken:
-          type: string
-        sellAmount:
-          type: string
-        amountOut:
-          type: string
-        minOut:
-          type: string
-        safety:
-          $ref: '#/components/schemas/QuoteSafety'
-        unsignedTx:
-          $ref: '#/components/schemas/UnsignedTransaction'
-        route:
-          type: array
-          items:
-            $ref: '#/components/schemas/QuoteRouteHop'
-        fees:
-          $ref: '#/components/schemas/QuoteFees'
-        requiredApprovals:
-          type: array
-          items:
-            $ref: '#/components/schemas/RequiredApproval'
-        source:
-          type: string
-          enum: [uniswap]
-    QuoteRouteHop:
-      type: object
-      additionalProperties: false
-      required:
-        - pathIndex
-        - hopIndex
-        - type
-      properties:
-        pathIndex:
-          type: integer
-        hopIndex:
-          type: integer
-        type:
-          type: string
         address:
           type: string
-        tokenIn:
-          type: string
-        tokenOut:
-          type: string
-    QuoteFeeItem:
-      type: object
-      additionalProperties: false
-      properties:
-        type:
-          type: string
-        amount:
-          type: string
-        token:
-          type: string
-        bips:
-          type: string
-        recipient:
-          type: string
-    QuoteFees:
+    WalletChallengeResponse:
       type: object
       additionalProperties: false
       required:
-        - items
+        - challengeId
+        - message
+        - issuedAt
+        - expiresAt
       properties:
-        gasFee:
+        challengeId:
           type: string
-        gasFeeQuote:
+        message:
           type: string
-        gasFeeUsd:
+        issuedAt:
           type: string
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/QuoteFeeItem'
-    QuoteSafety:
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+    WalletVerifyRequest:
       type: object
       additionalProperties: false
       required:
-        - minOut
-        - deadline
+        - address
+        - challengeId
+        - signature
+        - venue
       properties:
-        minOut:
+        address:
           type: string
-        deadline:
+        challengeId:
           type: string
-    ApprovalTx:
+        signature:
+          type: string
+        venue:
+          $ref: '#/components/schemas/VenueId'
+    WalletVerifyResponse:
       type: object
       additionalProperties: false
       required:
-        - to
-        - data
-        - value
-      properties:
-        to:
-          type: string
-        from:
-          type: string
-        data:
-          type: string
-        value:
-          type: string
-        gasLimit:
-          type: string
-        maxFeePerGas:
-          type: string
-        maxPriorityFeePerGas:
-          type: string
-    RequiredApproval:
-      type: object
-      additionalProperties: false
-      required:
-        - token
-        - requiredAmount
-        - approvalTx
-      properties:
-        token:
-          type: string
-        spender:
-          type: string
-        requiredAmount:
-          type: string
-        approvalTx:
-          $ref: '#/components/schemas/ApprovalTx'
-        cancelTx:
-          $ref: '#/components/schemas/ApprovalTx'
-    BuildTransactionRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - quoteId
-        - wallet
-        - chainId
-      properties:
-        quoteId:
-          type: string
-        wallet:
-          type: string
-        chainId:
-          type: integer
-    UnsignedTransaction:
-      type: object
-      additionalProperties: false
-      required:
-        - to
-        - data
-        - value
-        - gasLimit
-        - maxFeePerGas
-        - maxPriorityFeePerGas
-        - chainId
-      properties:
-        to:
-          type: string
-        data:
-          type: string
-        value:
-          type: string
-        gasLimit:
-          type: string
-        maxFeePerGas:
-          type: string
-        maxPriorityFeePerGas:
-          type: string
-        chainId:
-          type: integer
-    BuildTransactionResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - buildId
-        - quoteId
-        - wallet
-        - unsignedTx
-        - warnings
-        - simulated
+        - ownershipVerified
+        - venue
+        - eligible
+        - reason
+        - checkedAt
         - source
       properties:
-        buildId:
-          type: string
-        quoteId:
-          type: string
-        wallet:
-          type: string
-        unsignedTx:
-          $ref: '#/components/schemas/UnsignedTransaction'
-        warnings:
-          type: array
-          items:
-            type: string
-        simulated:
+        ownershipVerified:
           type: boolean
+        venue:
+          $ref: '#/components/schemas/VenueId'
+        eligible:
+          type: boolean
+        reason:
+          type: string
+        checkedAt:
+          type: string
+          format: date-time
         source:
           type: string
-    OrderRequest:
+    PerpOrderRequest:
       type: object
       additionalProperties: false
       required:
-        - walletAddress
-        - chainId
-        - symbol
+        - accountId
+        - venue
+        - instrument
         - side
         - type
-        - quantity
+        - size
       properties:
-        walletAddress:
+        accountId:
           type: string
-        chainId:
-          type: integer
-        symbol:
+        venue:
+          $ref: '#/components/schemas/VenueId'
+        instrument:
           type: string
         side:
           type: string
@@ -408,11 +260,15 @@ components:
         type:
           type: string
           enum: [market, limit]
-        quantity:
-          type: string
-        clientOrderId:
+        size:
           type: string
         limitPrice:
+          type: string
+        leverage:
+          type: string
+        reduceOnly:
+          type: boolean
+        clientOrderId:
           type: string
       allOf:
         - if:
@@ -428,57 +284,89 @@ components:
                 const: limit
           then:
             required: [limitPrice]
-    BuildUnsignedTransactionRequest:
+    BuildUnsignedActionRequest:
       type: object
       additionalProperties: false
       required:
         - order
       properties:
         order:
-          $ref: '#/components/schemas/OrderRequest'
-    UnsignedTxPayload:
+          $ref: '#/components/schemas/PerpOrderRequest'
+    PerpOrderPreviewResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - previewId
+        - accountId
+        - venue
+        - instrument
+        - side
+        - type
+        - size
+        - estimatedNotional
+        - estimatedFee
+        - expiresAt
+        - source
+      properties:
+        previewId:
+          type: string
+        accountId:
+          type: string
+        venue:
+          $ref: '#/components/schemas/VenueId'
+        instrument:
+          type: string
+        side:
+          type: string
+          enum: [buy, sell]
+        type:
+          type: string
+          enum: [market, limit]
+        size:
+          type: string
+        limitPrice:
+          type: string
+        markPrice:
+          type: string
+        estimatedNotional:
+          type: string
+        estimatedFee:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        source:
+          type: string
+    UnsignedActionPayload:
       type: object
       additionalProperties: false
       required:
         - id
-        - walletAddress
-        - chainId
+        - accountId
+        - venue
         - kind
-        - to
-        - data
-        - value
+        - action
       properties:
         id:
           type: string
-        walletAddress:
+        accountId:
           type: string
-        chainId:
-          type: integer
+        venue:
+          $ref: '#/components/schemas/VenueId'
         kind:
           type: string
-          enum: [evm_transaction]
-        to:
-          type: string
-        data:
-          type: string
-        value:
-          type: string
-        gasLimit:
-          type: string
-        maxFeePerGas:
-          type: string
-        maxPriorityFeePerGas:
-          type: string
-        nonce:
-          type: integer
-    BuildUnsignedTransactionResponse:
+          enum: [perp_order_action]
+        action:
+          type: object
+          additionalProperties: true
+    BuildUnsignedActionResponse:
       type: object
       additionalProperties: false
       required:
         - orderId
         - signingPolicy
         - disclaimer
-        - unsignedTxPayload
+        - unsignedActionPayload
       properties:
         orderId:
           type: string
@@ -487,53 +375,70 @@ components:
           enum: [client-signing-only]
         disclaimer:
           type: string
-        unsignedTxPayload:
-          $ref: '#/components/schemas/UnsignedTxPayload'
-    Position:
+        unsignedActionPayload:
+          $ref: '#/components/schemas/UnsignedActionPayload'
+    PerpPosition:
       type: object
       additionalProperties: false
       required:
         - positionId
-        - chainId
-        - protocol
-        - asset
-        - balance
-        - usdValue
+        - accountId
+        - venue
+        - instrument
+        - direction
+        - status
+        - size
+        - entryPrice
+        - markPrice
+        - notionalValue
         - unrealizedPnlUsd
         - lastUpdatedAt
       properties:
         positionId:
           type: string
-        chainId:
-          type: integer
-        protocol:
+        accountId:
           type: string
-        asset:
+        venue:
+          $ref: '#/components/schemas/VenueId'
+        instrument:
           type: string
-        balance:
+        direction:
           type: string
-        usdValue:
+          enum: [long, short]
+        status:
+          type: string
+          enum: [open, closed, liquidated]
+        size:
+          type: string
+        entryPrice:
+          type: string
+        markPrice:
+          type: string
+        notionalValue:
+          type: string
+        leverage:
           type: string
         unrealizedPnlUsd:
           type: string
         lastUpdatedAt:
           type: string
           format: date-time
-    PositionsResponse:
+    PerpPositionsResponse:
       type: object
       additionalProperties: false
       required:
-        - wallet
+        - accountId
+        - venue
         - positions
         - source
       properties:
-        wallet:
+        accountId:
           type: string
-        chainId:
-          type: integer
+        venue:
+          $ref: '#/components/schemas/VenueId'
         positions:
           type: array
           items:
-            $ref: '#/components/schemas/Position'
+            $ref: '#/components/schemas/PerpPosition'
         source:
           type: string
