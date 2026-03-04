@@ -1,7 +1,7 @@
 'use client';
 
 import type { BffBuildUnsignedActionResponse, BffVenueId } from '@dexera/api-types/openapi';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,10 @@ import {
   type OrderEntryDraft,
   validateOrderEntryDraft,
 } from '@/lib/wallet/order-entry-logic';
+import {
+  collectOrderEntryInstruments,
+  resolveLimitPriceAutofill,
+} from '@/lib/wallet/order-entry-panel-state';
 import { submitUnsignedAction } from '@/lib/wallet/sign-unsigned-transaction';
 import {
   SIGNING_ONLY_DISCLAIMER_LINES,
@@ -38,19 +42,6 @@ function truncateAccountId(accountId: string): string {
   }
 
   return `${accountId.slice(0, 8)}...${accountId.slice(-4)}`;
-}
-
-function getVenueInstruments(marketData: WorkspaceMarketDataState, venue: BffVenueId): string[] {
-  const set = new Set<string>();
-  for (const instrument of marketData.instruments) {
-    if (instrument.venue.toLowerCase() !== venue) {
-      continue;
-    }
-
-    set.add(instrument.instrument.toUpperCase());
-  }
-
-  return [...set];
 }
 
 function toJsonPreview(value: unknown): string {
@@ -102,10 +93,11 @@ export function OrderEntryPanel({ marketData }: { marketData: WorkspaceMarketDat
     status: 'idle',
     message: 'Preview an unsigned payload before wallet submission.',
   });
+  const lastSyncedLimitInstrumentRef = useRef<string>(draft.instrument);
 
   const venueInstruments = useMemo(
-    () => getVenueInstruments(marketData, draft.venue),
-    [marketData.instruments, draft.venue],
+    () => collectOrderEntryInstruments(marketData.instruments),
+    [marketData.instruments],
   );
 
   useEffect(() => {
@@ -132,12 +124,25 @@ export function OrderEntryPanel({ marketData }: { marketData: WorkspaceMarketDat
     : undefined;
 
   useEffect(() => {
-    if (draft.type !== 'limit' || draft.limitPrice.trim().length > 0 || markPrice === undefined) {
+    const nextAutofill = resolveLimitPriceAutofill({
+      orderType: draft.type,
+      instrument: draft.instrument,
+      currentLimitPrice: draft.limitPrice,
+      markPrice,
+      lastSyncedInstrument: lastSyncedLimitInstrumentRef.current,
+    });
+
+    if (nextAutofill === null) {
       return;
     }
 
-    setDraft((currentDraft) => ({ ...currentDraft, limitPrice: markPrice.toFixed(2) }));
-  }, [draft.limitPrice, draft.type, markPrice]);
+    lastSyncedLimitInstrumentRef.current = nextAutofill.nextSyncedInstrument;
+    setDraft((currentDraft) =>
+      currentDraft.limitPrice === nextAutofill.nextLimitPrice
+        ? currentDraft
+        : { ...currentDraft, limitPrice: nextAutofill.nextLimitPrice },
+    );
+  }, [draft.instrument, draft.limitPrice, draft.type, markPrice]);
 
   const validation = useMemo(() => validateOrderEntryDraft(draft), [draft]);
 
