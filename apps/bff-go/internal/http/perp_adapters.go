@@ -320,10 +320,64 @@ func (a *hyperliquidAdapter) CheckWalletEligibility(
 	r *http.Request,
 	address string,
 ) (walletVenueEligibilityResult, error) {
-	params := url.Values{}
-	params.Set("accountId", address)
+	rolePayload, err := a.postJSON(r.Context(), "/info", map[string]any{
+		"type": "userRole",
+		"user": address,
+	})
+	if err != nil {
+		var upstreamErr *upstreamHTTPError
+		if errors.As(err, &upstreamErr) &&
+			upstreamErr.statusCode >= http.StatusBadRequest &&
+			upstreamErr.statusCode < http.StatusInternalServerError {
+			return walletVenueEligibilityResult{
+				Eligible: false,
+				Reason:   "venue rejected the address for role lookup",
+				Source:   string(venueHyperliquid),
+			}, nil
+		}
+		return walletVenueEligibilityResult{}, err
+	}
 
-	_, err := a.getJSON(r.Context(), "/v1/perp/positions", params)
+	role := normalizeHyperliquidUserRole(rolePayload)
+	switch role {
+	case "user", "subaccount":
+		// allowed account roles for this prototype eligibility flow
+	case "missing":
+		return walletVenueEligibilityResult{
+			Eligible: false,
+			Reason:   "wallet is not registered on Hyperliquid",
+			Source:   string(venueHyperliquid),
+		}, nil
+	case "agent":
+		return walletVenueEligibilityResult{
+			Eligible: false,
+			Reason:   "agent wallets are not eligible; use a master or subaccount address",
+			Source:   string(venueHyperliquid),
+		}, nil
+	case "vault":
+		return walletVenueEligibilityResult{
+			Eligible: false,
+			Reason:   "vault addresses are not eligible for direct wallet trading access",
+			Source:   string(venueHyperliquid),
+		}, nil
+	case "":
+		return walletVenueEligibilityResult{
+			Eligible: false,
+			Reason:   "venue did not return a wallet role",
+			Source:   string(venueHyperliquid),
+		}, nil
+	default:
+		return walletVenueEligibilityResult{
+			Eligible: false,
+			Reason:   fmt.Sprintf("wallet role %q is not eligible for this trading flow", role),
+			Source:   string(venueHyperliquid),
+		}, nil
+	}
+
+	_, err = a.postJSON(r.Context(), "/info", map[string]any{
+		"type": "clearinghouseState",
+		"user": address,
+	})
 	if err != nil {
 		var upstreamErr *upstreamHTTPError
 		if errors.As(err, &upstreamErr) &&
@@ -343,6 +397,14 @@ func (a *hyperliquidAdapter) CheckWalletEligibility(
 		Reason:   "address is accepted by venue account checks",
 		Source:   string(venueHyperliquid),
 	}, nil
+}
+
+func normalizeHyperliquidUserRole(payload map[string]any) string {
+	role := stringField(payload, "role")
+	if role == "" {
+		role = stringField(payload, "userRole")
+	}
+	return strings.ToLower(strings.TrimSpace(role))
 }
 
 func (a *asterMockAdapter) CheckWalletEligibility(
