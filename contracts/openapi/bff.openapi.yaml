@@ -71,6 +71,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BuildTransactionResponse'
+  /api/v1/transactions/unsigned:
+    post:
+      summary: Build an unsigned transaction for client-side wallet submission
+      operationId: postBuildUnsignedTransaction
+      tags:
+        - trading
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildUnsignedTransactionRequest'
+      responses:
+        '200':
+          description: Unsigned transaction payload response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildUnsignedTransactionResponse'
   /api/v1/positions:
     get:
       summary: Retrieve positions for a wallet (mock)
@@ -366,6 +385,110 @@ components:
           type: boolean
         source:
           type: string
+    OrderRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - walletAddress
+        - chainId
+        - symbol
+        - side
+        - type
+        - quantity
+      properties:
+        walletAddress:
+          type: string
+        chainId:
+          type: integer
+        symbol:
+          type: string
+        side:
+          type: string
+          enum: [buy, sell]
+        type:
+          type: string
+          enum: [market, limit]
+        quantity:
+          type: string
+        clientOrderId:
+          type: string
+        limitPrice:
+          type: string
+      allOf:
+        - if:
+            properties:
+              type:
+                const: market
+          then:
+            not:
+              required: [limitPrice]
+        - if:
+            properties:
+              type:
+                const: limit
+          then:
+            required: [limitPrice]
+    BuildUnsignedTransactionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - order
+      properties:
+        order:
+          $ref: '#/components/schemas/OrderRequest'
+    UnsignedTxPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - walletAddress
+        - chainId
+        - kind
+        - to
+        - data
+        - value
+      properties:
+        id:
+          type: string
+        walletAddress:
+          type: string
+        chainId:
+          type: integer
+        kind:
+          type: string
+          enum: [evm_transaction]
+        to:
+          type: string
+        data:
+          type: string
+        value:
+          type: string
+        gasLimit:
+          type: string
+        maxFeePerGas:
+          type: string
+        maxPriorityFeePerGas:
+          type: string
+        nonce:
+          type: integer
+    BuildUnsignedTransactionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - orderId
+        - signingPolicy
+        - disclaimer
+        - unsignedTxPayload
+      properties:
+        orderId:
+          type: string
+        signingPolicy:
+          type: string
+          enum: [client-signing-only]
+        disclaimer:
+          type: string
+        unsignedTxPayload:
+          $ref: '#/components/schemas/UnsignedTxPayload'
     Position:
       type: object
       additionalProperties: false

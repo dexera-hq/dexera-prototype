@@ -21,56 +21,6 @@ type TradeExecutionState =
   | { status: 'success'; message: string }
   | { status: 'error'; message: string };
 
-const MOCK_SIGNING_DISCLAIMER =
-  'Workspace demo uses mocked unsigned transaction building for now, but the signature request is sent to the connected wallet.';
-
-function createMockUnsignedTransactionFetch(
-  walletAddress: string,
-  chainId: number,
-): typeof fetch {
-  return async (_input, init) => {
-    const requestText = typeof init?.body === 'string' ? init.body : '{}';
-    let parsedRequest: {
-      order?: {
-        quantity?: string;
-        limitPrice?: string;
-      };
-    } = {};
-
-    try {
-      parsedRequest = JSON.parse(requestText) as typeof parsedRequest;
-    } catch {
-      parsedRequest = {};
-    }
-
-    const quantity = parsedRequest.order?.quantity?.trim() || '0.10';
-    const limitPrice = parsedRequest.order?.limitPrice?.trim() || '2845.32';
-    const mockBody = {
-      orderId: 'ord_mock_trade_panel',
-      signingPolicy: 'client-signing-only',
-      disclaimer: MOCK_SIGNING_DISCLAIMER,
-      unsignedTxPayload: {
-        id: 'utxp_mock_trade_panel',
-        walletAddress,
-        chainId,
-        kind: 'evm_transaction',
-        to: '0x1111111111111111111111111111111111111111',
-        data: `0xdeadbeef${quantity.replace('.', '')}${limitPrice.replace('.', '')}`,
-        value: '0',
-        gasLimit: '210000',
-        maxFeePerGas: '25000000000',
-        maxPriorityFeePerGas: '1500000000',
-      },
-    };
-
-    return {
-      ok: true,
-      status: 200,
-      json: async () => mockBody,
-    } as Response;
-  };
-}
-
 function truncateAddress(address: string): string {
   if (address.length <= 12) {
     return address;
@@ -103,7 +53,7 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [executionState, setExecutionState] = useState<TradeExecutionState>({
     status: 'idle',
-    message: 'Signing preview is available from the trade confirmation modal.',
+    message: 'Server-built unsigned transaction validation is available from the trade confirmation modal.',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showValidationToast, setShowValidationToast] = useState(false);
@@ -165,26 +115,21 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
     setIsSubmitting(true);
     setExecutionState({
       status: 'pending',
-      message: 'Building mocked unsigned transaction and running client-side signing checks...',
+      message: 'Requesting an unsigned transaction from the server and running client-side signing checks...',
     });
 
     try {
-      const response = await buildUnsignedTransaction(
-        {
-          order: {
-            walletAddress: activeSlot.walletAddress,
-            chainId: activeSlot.chainId,
-            symbol: 'ETH/USDT',
-            side: 'buy',
-            type: 'limit',
-            quantity: amount.trim() || '0.10',
-            limitPrice: price.trim() || (ethPrice ? ethPrice.price.toFixed(2) : '0.00'),
-          },
+      const response = await buildUnsignedTransaction({
+        order: {
+          walletAddress: activeSlot.walletAddress,
+          chainId: activeSlot.chainId,
+          symbol: 'ETH/USDT',
+          side: 'buy',
+          type: 'limit',
+          quantity: amount.trim() || '0.10',
+          limitPrice: price.trim() || (ethPrice ? ethPrice.price.toFixed(2) : '0.00'),
         },
-        {
-          fetchImpl: createMockUnsignedTransactionFetch(activeSlot.walletAddress, activeSlot.chainId),
-        },
-      );
+      });
 
       const submission = await submitUnsignedTransaction({
         payload: response.unsignedTxPayload,
@@ -346,7 +291,7 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
                 {SIGNING_ONLY_DISCLAIMER_LINES.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
-                <li>{MOCK_SIGNING_DISCLAIMER}</li>
+                <li>Unsigned transaction data is fetched from the backend endpoint before wallet submission.</li>
               </ul>
             </div>
 

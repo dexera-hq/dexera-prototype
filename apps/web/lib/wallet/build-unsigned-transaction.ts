@@ -1,13 +1,13 @@
 import type {
-  BuildUnsignedTransactionRequest,
-  BuildUnsignedTransactionResponse,
-  TransactionSigningPolicy,
-} from '@dexera/shared-types';
+  BffBuildUnsignedTransactionRequest,
+  BffBuildUnsignedTransactionResponse,
+} from '@dexera/api-types/openapi';
 
 import { TransactionGuardrailError, assertUnsignedTxPayload } from './transaction-guardrails';
 
 const DEFAULT_UNSIGNED_TRANSACTION_ENDPOINT = '/api/v1/transactions/unsigned';
-const CLIENT_SIGNING_ONLY_POLICY: TransactionSigningPolicy = 'client-signing-only';
+const CLIENT_SIGNING_ONLY_POLICY: BffBuildUnsignedTransactionResponse['signingPolicy'] =
+  'client-signing-only';
 
 type FetchLike = typeof fetch;
 
@@ -16,12 +16,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export async function buildUnsignedTransaction(
-  request: BuildUnsignedTransactionRequest,
+  request: BffBuildUnsignedTransactionRequest,
   options?: {
     endpoint?: string;
     fetchImpl?: FetchLike;
   },
-): Promise<BuildUnsignedTransactionResponse> {
+): Promise<BffBuildUnsignedTransactionResponse> {
   const fetchImpl = options?.fetchImpl ?? fetch;
   const endpoint = options?.endpoint ?? DEFAULT_UNSIGNED_TRANSACTION_ENDPOINT;
 

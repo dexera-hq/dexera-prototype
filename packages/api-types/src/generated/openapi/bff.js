@@ -6,6 +6,7 @@ export const BFF_PUBLIC_PATHS = [
   "/api/v1/placeholder",
   "/api/v1/quotes",
   "/api/v1/transactions/build",
+  "/api/v1/transactions/unsigned",
   "/api/v1/positions"
 ];
 
