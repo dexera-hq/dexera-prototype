@@ -5,7 +5,7 @@ Polyglot monorepo scaffold for Dexera with a TypeScript/Next.js-first frontend a
 ## Workspace layout
 
 - `apps/web`: Next.js TypeScript frontend (app router)
-- `apps/bff-go`: Go BFF with `/health`, `/api/v1/placeholder`, and Uniswap-backed `/api/v1/quotes`
+- `apps/bff-go`: Go BFF with `/health`, `/api/v1/placeholder`, and perpetual venue routes under `/api/v1/perp/*`
 - `services/market-data`: Rust scaffold with health/ping behavior
 - `services/execution`: Rust scaffold with health/ping behavior
 - `services/portfolio`: Rust scaffold with health/ping behavior
@@ -24,26 +24,25 @@ pnpm codegen
 pnpm check
 ```
 
-For WalletConnect support in `apps/web`, set `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in `.env`.
+To configure Hyperliquid network routing in the Go BFF, set:
 
-To enable aggregator quote requests in the Go BFF, set:
+- `HYPERLIQUID_NETWORK=mainnet|testnet` (default `mainnet`)
 
-- `UNISWAP_TRADING_API_KEY=<your_api_key>`
-- `UNISWAP_TRADING_API_BASE_URL=https://trade-api.gateway.uniswap.org/v1` (optional override)
+- `HYPERLIQUID_API_BASE_URL=https://api.hyperliquid.xyz` (optional explicit override; takes precedence over network toggle)
 
 Mock market data endpoints used by the UI:
 
-- `GET /api/mock/tokens?chain=hyperliquid`
-- `GET /api/mock/prices?symbols=ETH,BTC,USDC,SOL&chain=hyperliquid`
-- `GET /api/mock/balances?account=<wallet>&chain=hyperliquid`
+- `GET /api/mock/instruments?venue=hyperliquid`
+- `GET /api/mock/marks?instruments=BTC-PERP,ETH-PERP&venue=hyperliquid`
+- `GET /api/mock/positions?accountId=<account>&venue=hyperliquid`
 
 Flags in `.env`:
 
 - `MOCK_MARKET_DATA=true|false` (default `true`)
 - `MOCK_MARKET_DATA_JITTER=false|true` (default `false`)
-- `DEFAULT_CHAIN=hyperliquid`
+- `DEFAULT_VENUE=hyperliquid`
 
-`/api/mock/prices` omits unknown symbols from the response map.
+`/api/mock/marks` omits unknown instruments from the response map.
 
 ## Root scripts
 

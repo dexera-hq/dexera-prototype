@@ -1,11 +1,15 @@
 package http
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
-	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,131 +24,225 @@ type placeholderResponse struct {
 	Source  string `json:"source"`
 }
 
-type quoteRequest struct {
-	ChainID      int    `json:"chainId"`
-	SellToken    string `json:"sellToken"`
-	BuyToken     string `json:"buyToken"`
-	SellAmount   string `json:"sellAmount"`
-	Wallet       string `json:"wallet"`
-	SlippageBPS  int    `json:"slippageBps"`
-	AffiliateTag string `json:"affiliateTag,omitempty"`
+type walletChallengeRequest struct {
+	Address string `json:"address"`
 }
 
-type quoteResponse struct {
-	QuoteID           string              `json:"quoteId"`
-	ChainID           int                 `json:"chainId"`
-	SellToken         string              `json:"sellToken"`
-	BuyToken          string              `json:"buyToken"`
-	SellAmount        string              `json:"sellAmount"`
-	AmountOut         string              `json:"amountOut"`
-	MinOut            string              `json:"minOut"`
-	Safety            quoteSafety         `json:"safety"`
-	UnsignedTx        unsignedTransaction `json:"unsignedTx"`
-	Route             []quoteRouteHop     `json:"route"`
-	Fees              quoteFees           `json:"fees"`
-	RequiredApprovals []requiredApproval  `json:"requiredApprovals"`
-	Source            string              `json:"source"`
+type walletChallengeResponse struct {
+	ChallengeID string `json:"challengeId"`
+	Message     string `json:"message"`
+	IssuedAt    string `json:"issuedAt"`
+	ExpiresAt   string `json:"expiresAt"`
 }
 
-type quoteRouteHop struct {
-	PathIndex int    `json:"pathIndex"`
-	HopIndex  int    `json:"hopIndex"`
-	Type      string `json:"type"`
-	Address   string `json:"address,omitempty"`
-	TokenIn   string `json:"tokenIn,omitempty"`
-	TokenOut  string `json:"tokenOut,omitempty"`
+type walletVerifyRequest struct {
+	Address     string  `json:"address"`
+	ChallengeID string  `json:"challengeId"`
+	Signature   string  `json:"signature"`
+	Venue       venueID `json:"venue"`
 }
 
-type quoteFees struct {
-	GasFee      string         `json:"gasFee,omitempty"`
-	GasFeeQuote string         `json:"gasFeeQuote,omitempty"`
-	GasFeeUSD   string         `json:"gasFeeUsd,omitempty"`
-	Items       []quoteFeeItem `json:"items"`
+type walletVerifyResponse struct {
+	OwnershipVerified bool    `json:"ownershipVerified"`
+	Venue             venueID `json:"venue"`
+	Eligible          bool    `json:"eligible"`
+	Reason            string  `json:"reason"`
+	CheckedAt         string  `json:"checkedAt"`
+	Source            string  `json:"source"`
 }
 
-type quoteFeeItem struct {
-	Type      string `json:"type,omitempty"`
-	Amount    string `json:"amount,omitempty"`
-	Token     string `json:"token,omitempty"`
-	Bips      string `json:"bips,omitempty"`
-	Recipient string `json:"recipient,omitempty"`
+type walletVenueEligibilityResult struct {
+	Eligible bool
+	Reason   string
+	Source   string
 }
 
-type quoteSafety struct {
-	MinOut   string `json:"minOut"`
-	Deadline string `json:"deadline"`
+type venueID string
+
+const (
+	venueHyperliquid   venueID = "hyperliquid"
+	venueAster         venueID = "aster"
+	walletChallengeTTL         = 5 * time.Minute
+)
+
+var errWalletChallengeExpired = errors.New("wallet challenge expired")
+var errWalletChallengeNotFound = errors.New("wallet challenge was not found")
+var errWalletChallengeAddressMismatch = errors.New("wallet challenge does not match the provided address")
+
+type walletChallengeRecord struct {
+	Address   string
+	Message   string
+	IssuedAt  time.Time
+	ExpiresAt time.Time
 }
 
-type requiredApproval struct {
-	Token          string      `json:"token"`
-	Spender        string      `json:"spender,omitempty"`
-	RequiredAmount string      `json:"requiredAmount"`
-	ApprovalTx     approvalTx  `json:"approvalTx"`
-	CancelTx       *approvalTx `json:"cancelTx,omitempty"`
+type walletChallengeStore struct {
+	mu      sync.Mutex
+	records map[string]walletChallengeRecord
+	nowFn   func() time.Time
 }
 
-type approvalTx struct {
-	To                   string `json:"to"`
-	From                 string `json:"from,omitempty"`
-	Data                 string `json:"data"`
-	Value                string `json:"value"`
-	GasLimit             string `json:"gasLimit,omitempty"`
-	MaxFeePerGas         string `json:"maxFeePerGas,omitempty"`
-	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas,omitempty"`
+func newWalletChallengeStore(nowFn func() time.Time) *walletChallengeStore {
+	return &walletChallengeStore{
+		records: make(map[string]walletChallengeRecord),
+		nowFn:   nowFn,
+	}
 }
 
-type buildTransactionRequest struct {
-	QuoteID string `json:"quoteId"`
-	Wallet  string `json:"wallet"`
-	ChainID int    `json:"chainId"`
+func (s *walletChallengeStore) issue(address string) (string, walletChallengeRecord, error) {
+	issuedAt := s.nowFn().UTC()
+	expiresAt := issuedAt.Add(walletChallengeTTL)
+
+	challengeID, err := randomHexToken(16)
+	if err != nil {
+		return "", walletChallengeRecord{}, err
+	}
+	nonce, err := randomHexToken(16)
+	if err != nil {
+		return "", walletChallengeRecord{}, err
+	}
+
+	message := buildWalletChallengeMessage(address, challengeID, nonce, issuedAt, expiresAt)
+	record := walletChallengeRecord{
+		Address:   address,
+		Message:   message,
+		IssuedAt:  issuedAt,
+		ExpiresAt: expiresAt,
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for key, existing := range s.records {
+		if issuedAt.After(existing.ExpiresAt) {
+			delete(s.records, key)
+		}
+	}
+
+	s.records[challengeID] = record
+	return challengeID, record, nil
 }
 
-type unsignedTransaction struct {
-	To                   string `json:"to"`
-	Data                 string `json:"data"`
-	Value                string `json:"value"`
-	GasLimit             string `json:"gasLimit"`
-	MaxFeePerGas         string `json:"maxFeePerGas"`
-	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas"`
-	ChainID              int    `json:"chainId"`
+func (s *walletChallengeStore) consume(challengeID, address string) (walletChallengeRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.records[challengeID]
+	if !ok {
+		return walletChallengeRecord{}, errWalletChallengeNotFound
+	}
+
+	delete(s.records, challengeID)
+
+	now := s.nowFn().UTC()
+	if now.After(record.ExpiresAt) {
+		return walletChallengeRecord{}, errWalletChallengeExpired
+	}
+
+	if !strings.EqualFold(record.Address, address) {
+		return walletChallengeRecord{}, errWalletChallengeAddressMismatch
+	}
+
+	return record, nil
 }
 
-type buildTransactionResponse struct {
-	BuildID    string              `json:"buildId"`
-	QuoteID    string              `json:"quoteId"`
-	Wallet     string              `json:"wallet"`
-	UnsignedTx unsignedTransaction `json:"unsignedTx"`
-	Warnings   []string            `json:"warnings"`
-	Simulated  bool                `json:"simulated"`
-	Source     string              `json:"source"`
+type perpOrderRequest struct {
+	AccountID     string  `json:"accountId"`
+	Venue         venueID `json:"venue"`
+	Instrument    string  `json:"instrument"`
+	Side          string  `json:"side"`
+	Type          string  `json:"type"`
+	Size          string  `json:"size"`
+	LimitPrice    *string `json:"limitPrice,omitempty"`
+	Leverage      *string `json:"leverage,omitempty"`
+	ReduceOnly    *bool   `json:"reduceOnly,omitempty"`
+	ClientOrderID string  `json:"clientOrderId,omitempty"`
 }
 
-type position struct {
-	PositionID       string `json:"positionId"`
-	ChainID          int    `json:"chainId"`
-	Protocol         string `json:"protocol"`
-	Asset            string `json:"asset"`
-	Balance          string `json:"balance"`
-	USDValue         string `json:"usdValue"`
-	UnrealizedPnLUSD string `json:"unrealizedPnlUsd"`
-	LastUpdatedAt    string `json:"lastUpdatedAt"`
+type buildUnsignedActionRequest struct {
+	Order perpOrderRequest `json:"order"`
 }
 
-type positionsResponse struct {
-	Wallet    string     `json:"wallet"`
-	ChainID   int        `json:"chainId,omitempty"`
-	Positions []position `json:"positions"`
-	Source    string     `json:"source"`
+type perpOrderPreviewResponse struct {
+	PreviewID         string  `json:"previewId"`
+	AccountID         string  `json:"accountId"`
+	Venue             venueID `json:"venue"`
+	Instrument        string  `json:"instrument"`
+	Side              string  `json:"side"`
+	Type              string  `json:"type"`
+	Size              string  `json:"size"`
+	LimitPrice        *string `json:"limitPrice,omitempty"`
+	MarkPrice         *string `json:"markPrice,omitempty"`
+	EstimatedNotional string  `json:"estimatedNotional"`
+	EstimatedFee      string  `json:"estimatedFee"`
+	ExpiresAt         string  `json:"expiresAt"`
+	Source            string  `json:"source"`
 }
+
+type unsignedActionPayload struct {
+	ID        string         `json:"id"`
+	AccountID string         `json:"accountId"`
+	Venue     venueID        `json:"venue"`
+	Kind      string         `json:"kind"`
+	Action    map[string]any `json:"action"`
+}
+
+type buildUnsignedActionResponse struct {
+	OrderID               string                `json:"orderId"`
+	SigningPolicy         string                `json:"signingPolicy"`
+	Disclaimer            string                `json:"disclaimer"`
+	UnsignedActionPayload unsignedActionPayload `json:"unsignedActionPayload"`
+}
+
+type perpPosition struct {
+	PositionID       string  `json:"positionId"`
+	AccountID        string  `json:"accountId"`
+	Venue            venueID `json:"venue"`
+	Instrument       string  `json:"instrument"`
+	Direction        string  `json:"direction"`
+	Status           string  `json:"status"`
+	Size             string  `json:"size"`
+	EntryPrice       string  `json:"entryPrice"`
+	MarkPrice        string  `json:"markPrice"`
+	NotionalValue    string  `json:"notionalValue"`
+	Leverage         string  `json:"leverage,omitempty"`
+	UnrealizedPnLUSD string  `json:"unrealizedPnlUsd"`
+	LastUpdatedAt    string  `json:"lastUpdatedAt"`
+}
+
+type perpPositionsResponse struct {
+	AccountID string         `json:"accountId"`
+	Venue     venueID        `json:"venue"`
+	Positions []perpPosition `json:"positions"`
+	Source    string         `json:"source"`
+}
+
+type perpPositionsQuery struct {
+	AccountID  string
+	Venue      venueID
+	Instrument string
+}
+
+type perpVenueAdapter interface {
+	PreviewOrder(r *http.Request, req buildUnsignedActionRequest) (perpOrderPreviewResponse, error)
+	BuildUnsignedAction(r *http.Request, req buildUnsignedActionRequest) (buildUnsignedActionResponse, error)
+	GetPositions(r *http.Request, query perpPositionsQuery) (perpPositionsResponse, error)
+	CheckWalletEligibility(r *http.Request, address string) (walletVenueEligibilityResult, error)
+}
+
+var errAdapterNotConfigured = errors.New("venue adapter is not configured")
+var venueAdapterResolver = resolvePerpVenueAdapter
+var walletChallenges = newWalletChallengeStore(time.Now)
 
 func NewMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/api/v1/placeholder", placeholderHandler)
-	mux.HandleFunc("/api/v1/transactions/unsigned", buildUnsignedTransactionHandler)
-	mux.HandleFunc("/api/v1/quotes", quoteHandler)
-	mux.HandleFunc("/api/v1/transactions/build", buildTransactionHandler)
-	mux.HandleFunc("/api/v1/positions", positionsHandler)
+	mux.HandleFunc("/api/v1/wallet/challenge", walletChallengeHandler)
+	mux.HandleFunc("/api/v1/wallet/verify", walletVerifyHandler)
+	mux.HandleFunc("/api/v1/perp/orders/preview", perpOrderPreviewHandler)
+	mux.HandleFunc("/api/v1/perp/actions/unsigned", buildUnsignedActionHandler)
+	mux.HandleFunc("/api/v1/perp/positions", perpPositionsHandler)
 	return mux
 }
 
@@ -171,140 +269,325 @@ func placeholderHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func quoteHandler(w http.ResponseWriter, r *http.Request) {
+func walletChallengeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var req quoteRequest
+	var req walletChallengeRequest
 	if err := decodeStrictJSONBody(r, &req); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
-	if req.ChainID == 0 || req.SellToken == "" || req.BuyToken == "" || req.SellAmount == "" || req.Wallet == "" {
-		http.Error(w, "missing required fields", http.StatusBadRequest)
-		return
-	}
 
-	uniswap, err := newUniswapClientFromEnv()
+	address, err := parseWalletAddress(req.Address)
 	if err != nil {
-		http.Error(w, "uniswap integration is not configured", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	quotePayload, err := uniswap.quote(r.Context(), req)
+	challengeID, challenge, err := walletChallenges.issue(address)
 	if err != nil {
-		handleQuoteProviderError(w, err)
+		http.Error(w, "failed to issue wallet challenge", http.StatusInternalServerError)
 		return
 	}
 
-	approvalPayload, err := uniswap.checkApproval(r.Context(), req, quotePayload)
-	if err != nil {
-		handleQuoteProviderError(w, err)
-		return
-	}
-
-	swapPayload, err := uniswap.swap(r.Context(), quotePayload)
-	if err != nil {
-		handleQuoteProviderError(w, err)
-		return
-	}
-
-	normalized, err := normalizeQuoteResponse(req, quotePayload, swapPayload, approvalPayload)
-	if err != nil {
-		http.Error(w, "invalid quote payload from provider", http.StatusBadGateway)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, normalized)
-}
-
-func buildTransactionHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req buildTransactionRequest
-	if err := decodeStrictJSONBody(r, &req); err != nil {
-		http.Error(w, "invalid JSON body", http.StatusBadRequest)
-		return
-	}
-	if req.QuoteID == "" || req.Wallet == "" || req.ChainID <= 0 {
-		http.Error(w, "missing required fields", http.StatusBadRequest)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, buildTransactionResponse{
-		BuildID: "txbuild_mock_001",
-		QuoteID: req.QuoteID,
-		Wallet:  req.Wallet,
-		UnsignedTx: unsignedTransaction{
-			To:                   "0x1111111111111111111111111111111111111111",
-			Data:                 "0xdeadbeef",
-			Value:                "0",
-			GasLimit:             "250000",
-			MaxFeePerGas:         "35000000000",
-			MaxPriorityFeePerGas: "2000000000",
-			ChainID:              req.ChainID,
-		},
-		Warnings:  []string{"Mock transaction: values are placeholders and not broadcastable"},
-		Simulated: false,
-		Source:    "mock",
+	writeJSON(w, http.StatusOK, walletChallengeResponse{
+		ChallengeID: challengeID,
+		Message:     challenge.Message,
+		IssuedAt:    challenge.IssuedAt.Format(time.RFC3339),
+		ExpiresAt:   challenge.ExpiresAt.Format(time.RFC3339),
 	})
 }
 
-func positionsHandler(w http.ResponseWriter, r *http.Request) {
+func walletVerifyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req walletVerifyRequest
+	if err := decodeStrictJSONBody(r, &req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	address, err := parseWalletAddress(req.Address)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	challengeID := strings.TrimSpace(req.ChallengeID)
+	if challengeID == "" {
+		http.Error(w, "challengeId is required", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := parseVenue(string(req.Venue)); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	challenge, err := walletChallenges.consume(challengeID, address)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := verifyWalletChallengeSignature(challenge.Message, req.Signature); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	adapter, err := venueAdapterResolver(req.Venue)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	eligibility, err := adapter.CheckWalletEligibility(r, address)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	reason := strings.TrimSpace(eligibility.Reason)
+	if reason == "" {
+		if eligibility.Eligible {
+			reason = "wallet is eligible for this venue"
+		} else {
+			reason = "wallet is not eligible for this venue"
+		}
+	}
+
+	source := strings.TrimSpace(eligibility.Source)
+	if source == "" {
+		source = string(req.Venue)
+	}
+
+	writeJSON(w, http.StatusOK, walletVerifyResponse{
+		OwnershipVerified: true,
+		Venue:             req.Venue,
+		Eligible:          eligibility.Eligible,
+		Reason:            reason,
+		CheckedAt:         time.Now().UTC().Format(time.RFC3339),
+		Source:            source,
+	})
+}
+
+func perpOrderPreviewHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req buildUnsignedActionRequest
+	if err := decodeStrictJSONBody(r, &req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if err := validateBuildUnsignedActionRequest(req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	adapter, err := venueAdapterResolver(req.Order.Venue)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	preview, err := adapter.PreviewOrder(r, req)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, preview)
+}
+
+func buildUnsignedActionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req buildUnsignedActionRequest
+	if err := decodeStrictJSONBody(r, &req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if err := validateBuildUnsignedActionRequest(req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	adapter, err := venueAdapterResolver(req.Order.Venue)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	response, err := adapter.BuildUnsignedAction(r, req)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+func perpPositionsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	wallet := r.URL.Query().Get("wallet")
-	if wallet == "" {
-		http.Error(w, "missing wallet query parameter", http.StatusBadRequest)
+	accountID := strings.TrimSpace(r.URL.Query().Get("accountId"))
+	if accountID == "" {
+		http.Error(w, "missing accountId query parameter", http.StatusBadRequest)
 		return
 	}
 
-	chainID := 1
-	if chainIDParam := r.URL.Query().Get("chainId"); chainIDParam != "" {
-		parsedChainID, err := strconv.Atoi(chainIDParam)
-		if err != nil || parsedChainID <= 0 {
-			http.Error(w, "invalid chainId query parameter", http.StatusBadRequest)
-			return
-		}
-		chainID = parsedChainID
+	venue, err := parseVenue(strings.TrimSpace(r.URL.Query().Get("venue")))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
-	writeJSON(w, http.StatusOK, positionsResponse{
-		Wallet:  wallet,
-		ChainID: chainID,
-		Positions: []position{
-			{
-				PositionID:       "pos_mock_eth_001",
-				ChainID:          chainID,
-				Protocol:         "wallet",
-				Asset:            "ETH",
-				Balance:          "0.42",
-				USDValue:         "1468.22",
-				UnrealizedPnLUSD: "0",
-				LastUpdatedAt:    now,
-			},
-			{
-				PositionID:       "pos_mock_usdc_001",
-				ChainID:          chainID,
-				Protocol:         "wallet",
-				Asset:            "USDC",
-				Balance:          "1250.00",
-				USDValue:         "1250.00",
-				UnrealizedPnLUSD: "0",
-				LastUpdatedAt:    now,
-			},
-		},
-		Source: "mock",
+	adapter, err := venueAdapterResolver(venue)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	positions, err := adapter.GetPositions(r, perpPositionsQuery{
+		AccountID:  accountID,
+		Venue:      venue,
+		Instrument: strings.TrimSpace(r.URL.Query().Get("instrument")),
 	})
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, positions)
+}
+
+func parseVenue(value string) (venueID, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case string(venueHyperliquid):
+		return venueHyperliquid, nil
+	case string(venueAster):
+		return venueAster, nil
+	default:
+		return "", errors.New("venue must be hyperliquid or aster")
+	}
+}
+
+func randomHexToken(bytesLength int) (string, error) {
+	if bytesLength <= 0 {
+		return "", errors.New("bytesLength must be positive")
+	}
+
+	buffer := make([]byte, bytesLength)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(buffer), nil
+}
+
+func buildWalletChallengeMessage(
+	address string,
+	challengeID string,
+	nonce string,
+	issuedAt time.Time,
+	expiresAt time.Time,
+) string {
+	return fmt.Sprintf(
+		"Dexera Wallet Verification\nAddress: %s\nChallenge ID: %s\nNonce: %s\nIssued At: %s\nExpires At: %s\n\nSign this message to verify wallet ownership for client-side trading access.",
+		address,
+		challengeID,
+		nonce,
+		issuedAt.Format(time.RFC3339),
+		expiresAt.Format(time.RFC3339),
+	)
+}
+
+func parseWalletAddress(value string) (string, error) {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if len(trimmed) != 42 || !strings.HasPrefix(trimmed, "0x") {
+		return "", errors.New("address must be a 20-byte hex value with 0x prefix")
+	}
+
+	if _, err := hex.DecodeString(trimmed[2:]); err != nil {
+		return "", errors.New("address must be a valid hex value")
+	}
+
+	return trimmed, nil
+}
+
+func verifyWalletChallengeSignature(message string, signature string) error {
+	if strings.TrimSpace(message) == "" {
+		return errors.New("challenge message is empty")
+	}
+
+	trimmedSignature := strings.ToLower(strings.TrimSpace(signature))
+	if len(trimmedSignature) != 132 || !strings.HasPrefix(trimmedSignature, "0x") {
+		return errors.New("signature must be a 65-byte hex value with 0x prefix")
+	}
+
+	if _, err := hex.DecodeString(trimmedSignature[2:]); err != nil {
+		return errors.New("signature must be valid hex")
+	}
+
+	// Prototype verification mode: we enforce challenge binding + signature format.
+	// Full secp256k1 signature recovery can be added when crypto dependencies are introduced.
+	return nil
+}
+
+func validateBuildUnsignedActionRequest(request buildUnsignedActionRequest) error {
+	order := request.Order
+
+	if strings.TrimSpace(order.AccountID) == "" {
+		return errors.New("accountId is required")
+	}
+	if _, err := parseVenue(string(order.Venue)); err != nil {
+		return err
+	}
+	if strings.TrimSpace(order.Instrument) == "" {
+		return errors.New("instrument is required")
+	}
+	if strings.TrimSpace(order.Size) == "" {
+		return errors.New("size is required")
+	}
+
+	side := strings.ToLower(strings.TrimSpace(order.Side))
+	switch side {
+	case "buy", "sell":
+		// valid
+	default:
+		return errors.New("side must be buy or sell")
+	}
+
+	orderType := strings.ToLower(strings.TrimSpace(order.Type))
+	switch orderType {
+	case "market":
+		if order.LimitPrice != nil && strings.TrimSpace(*order.LimitPrice) != "" {
+			return errors.New("market orders must not include limitPrice")
+		}
+	case "limit":
+		if order.LimitPrice == nil || strings.TrimSpace(*order.LimitPrice) == "" {
+			return errors.New("limit orders must include limitPrice")
+		}
+	default:
+		return errors.New("type must be market or limit")
+	}
+
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
@@ -328,15 +611,21 @@ func decodeStrictJSONBody(r *http.Request, dst any) error {
 	return nil
 }
 
-func handleQuoteProviderError(w http.ResponseWriter, err error) {
+func handleAdapterError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errAdapterNotConfigured) {
+		http.Error(w, "venue integration is not configured", http.StatusInternalServerError)
+		return
+	}
+
 	var upstreamErr *upstreamHTTPError
 	if errors.As(err, &upstreamErr) {
 		if upstreamErr.statusCode >= http.StatusBadRequest && upstreamErr.statusCode < http.StatusInternalServerError {
-			http.Error(w, "quote request rejected by provider", upstreamErr.statusCode)
+			http.Error(w, "venue request rejected by upstream provider", upstreamErr.statusCode)
 			return
 		}
-		http.Error(w, "quote provider request failed", http.StatusBadGateway)
+		http.Error(w, "venue provider request failed", http.StatusBadGateway)
 		return
 	}
-	http.Error(w, "failed to fetch quote from provider", http.StatusBadGateway)
+
+	http.Error(w, "failed to execute venue request", http.StatusBadGateway)
 }
