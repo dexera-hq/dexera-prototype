@@ -1,4 +1,3 @@
-import type { ChainId } from './index.js';
 import type { Wallet } from './wallets.js';
 
 export type OrderSide = 'buy' | 'sell';
@@ -9,112 +8,50 @@ export type OrderStatus =
   | 'filled'
   | 'cancelled'
   | 'rejected';
-export type QuoteStatus = 'fresh' | 'stale' | 'expired';
-export type TxPayloadKind = 'evm_transaction';
-export type FillLiquidity = 'maker' | 'taker';
+export type PerpOrderType = 'market' | 'limit';
+export type PositionDirection = 'long' | 'short';
+export type UnsignedActionKind = 'perp_order_action';
 
-interface BaseOrderRequest extends Wallet {
-  symbol: string;
+export interface PerpOrderRequest extends Wallet {
+  instrument: string;
   side: OrderSide;
-  quantity: string;
+  type: PerpOrderType;
+  size: string;
+  limitPrice?: string;
+  leverage?: string;
+  reduceOnly?: boolean;
   clientOrderId?: string;
 }
 
-export interface MarketOrderRequest extends BaseOrderRequest {
-  type: 'market';
-  limitPrice?: never;
-}
-
-export interface LimitOrderRequest extends BaseOrderRequest {
-  type: 'limit';
-  limitPrice: string;
-}
-
-export type OrderRequest = MarketOrderRequest | LimitOrderRequest;
-export type OrderRequestType = OrderRequest['type'];
-
-interface BaseOrder extends Wallet {
+export interface UnsignedActionPayload {
   id: string;
-  symbol: string;
-  side: OrderSide;
-  quantity: string;
-  status: OrderStatus;
-  filledQuantity: string;
-  averageFillPrice?: string;
-  createdAt: string;
-  updatedAt: string;
-  quoteId?: string;
-  unsignedTxPayloadId?: string;
-}
-
-export interface MarketOrder extends BaseOrder {
-  type: 'market';
-  limitPrice?: never;
-}
-
-export interface LimitOrder extends BaseOrder {
-  type: 'limit';
-  limitPrice: string;
-}
-
-export type Order = MarketOrder | LimitOrder;
-export type OrderType = Order['type'];
-
-export interface Quote extends Wallet {
-  id: string;
-  symbol: string;
-  side: OrderSide;
-  quantity: string;
-  price: string;
-  estimatedTotal: string;
-  slippageBps: number;
-  expiresAt: string;
-  status: QuoteStatus;
-  createdAt: string;
-}
-
-export interface UnsignedTxPayload {
-  id: string;
-  walletAddress: string;
-  chainId: ChainId;
-  kind: TxPayloadKind;
-  to: string;
-  data: string;
-  value: string;
-  gasLimit?: string;
-  maxFeePerGas?: string;
-  maxPriorityFeePerGas?: string;
-  nonce?: number;
-  from?: never;
-  signature?: never;
-  rawTransaction?: never;
-  signedTransaction?: never;
-  txHash?: never;
+  accountId: string;
+  venue: Wallet['venue'];
+  kind: UnsignedActionKind;
+  action: Record<string, unknown>;
 }
 
 export type TransactionSigningPolicy = 'client-signing-only';
 
-export interface BuildUnsignedTransactionRequest {
-  order: OrderRequest;
+export interface BuildUnsignedActionRequest {
+  order: PerpOrderRequest;
 }
 
-export interface BuildUnsignedTransactionResponse {
+export interface BuildUnsignedActionResponse {
   orderId: string;
   signingPolicy: TransactionSigningPolicy;
   disclaimer: string;
-  unsignedTxPayload: UnsignedTxPayload;
+  unsignedActionPayload: UnsignedActionPayload;
 }
 
 export interface Fill extends Wallet {
   id: string;
   orderId: string;
-  symbol: string;
+  instrument: string;
   side: OrderSide;
-  quantity: string;
+  size: string;
   price: string;
   feeAmount?: string;
   feeAsset?: string;
-  liquidity?: FillLiquidity;
-  txHash?: string;
   filledAt: string;
 }

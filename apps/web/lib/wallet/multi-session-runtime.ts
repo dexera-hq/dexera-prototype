@@ -1,17 +1,10 @@
-import { createConfig, createStorage, http } from 'wagmi';
-import { connect, disconnect, getAccount, watchAccount } from 'wagmi/actions';
-import { getWalletClient } from '@wagmi/core/actions';
-import { mainnet } from 'wagmi/chains';
-import { coinbaseWallet, injected, walletConnect } from 'wagmi/connectors';
-import type { UnsignedTxPayload } from '@dexera/shared-types';
+import type { UnsignedActionPayload } from '@dexera/shared-types';
 
-import { HYPER_EVM_RPC_URL, hyperEvmChain, walletChains } from './chains';
 import { WALLET_CONNECTOR_IDS, type ConnectWalletReason, type WalletConnectorId } from './types';
 
 export type RuntimeAccountSnapshot = {
   isConnected: boolean;
-  address?: string;
-  chainId?: number;
+  accountId?: string;
   connectorId?: WalletConnectorId;
   connectorLabel?: string;
 };
@@ -22,49 +15,56 @@ export type RuntimeConnectResult = {
   account?: RuntimeAccountSnapshot;
 };
 
+type ProviderRequestParameters = {
+  method: string;
+  params?: readonly unknown[];
+};
+
+type ProviderEventHandler = (...args: unknown[]) => void;
+
+type BrowserWalletProvider = {
+  request: (parameters: ProviderRequestParameters) => Promise<unknown>;
+  on?: (eventName: string, listener: ProviderEventHandler) => void;
+  addListener?: (eventName: string, listener: ProviderEventHandler) => void;
+  removeListener?: (eventName: string, listener: ProviderEventHandler) => void;
+  off?: (eventName: string, listener: ProviderEventHandler) => void;
+};
+
+type BrowserWalletProviderContainer = {
+  ethereum?: unknown;
+  providers?: unknown;
+};
+
+type BrowserWalletWindow = Window & {
+  ethereum?: unknown;
+};
+
 type SlotRuntime = {
-  config: ReturnType<typeof createConfig>;
-  unwatchAccount?: () => void;
+  account: RuntimeAccountSnapshot;
+  provider: BrowserWalletProvider | null;
+  listeners: Set<(account: RuntimeAccountSnapshot) => void>;
 };
 
 const slotRuntimeById = new Map<string, SlotRuntime>();
 
+const CONNECTOR_LABELS: Record<WalletConnectorId, string> = {
+  metaMaskInjected: 'MetaMask',
+  coinbaseInjected: 'Coinbase Wallet',
+  rabbyInjected: 'Rabby',
+  injected: 'Injected Wallet',
+};
+
+type RequestError = {
+  code?: number;
+  message?: string;
+};
+
 export function isWalletConnectEnabled(): boolean {
-  return getWalletConnectProjectId().length > 0;
-}
-
-function getWalletConnectProjectId(): string {
-  return process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim() ?? '';
-}
-
-function createSlotConfig(slotId: string) {
-  const walletConnectProjectId = getWalletConnectProjectId();
-  const connectorFactories = [
-    injected(),
-    coinbaseWallet({ appName: 'Dexera Prototype' }),
-    ...(walletConnectProjectId.length > 0
-      ? [
-          walletConnect({
-            projectId: walletConnectProjectId,
-            showQrModal: true,
-          }),
-        ]
-      : []),
-  ];
-
-  return createConfig({
-    chains: walletChains,
-    connectors: connectorFactories,
-    transports: {
-      [mainnet.id]: http(),
-      [hyperEvmChain.id]: http(HYPER_EVM_RPC_URL),
-    },
-    ssr: false,
-    storage: createStorage({
-      key: `dexera.wallet-runtime.${slotId}.v1`,
-      storage: typeof window === 'undefined' ? undefined : window.localStorage,
-    }),
-  });
+  const value = process.env.NEXT_PUBLIC_WALLET_RUNTIME_ENABLED?.trim().toLowerCase();
+  if (!value) {
+    return true;
+  }
+  return value !== 'false' && value !== '0' && value !== 'no';
 }
 
 function getOrCreateSlotRuntime(slotId: string): SlotRuntime {
@@ -74,7 +74,9 @@ function getOrCreateSlotRuntime(slotId: string): SlotRuntime {
   }
 
   const createdRuntime: SlotRuntime = {
-    config: createSlotConfig(slotId),
+    account: { isConnected: false },
+    provider: null,
+    listeners: new Set(),
   };
   slotRuntimeById.set(slotId, createdRuntime);
 
@@ -91,83 +93,573 @@ function coerceConnectorId(connectorId: string | undefined): WalletConnectorId |
     : undefined;
 }
 
-function readAccountSnapshot(runtime: SlotRuntime): RuntimeAccountSnapshot {
-  const account = getAccount(runtime.config);
-  const connectorId = coerceConnectorId(account.connector?.id);
+function notifyAccountChange(slotRuntime: SlotRuntime): void {
+  for (const listener of slotRuntime.listeners) {
+    listener(slotRuntime.account);
+  }
+}
 
-  if (!account.isConnected || !account.address || !account.chainId || !connectorId) {
-    return {
-      isConnected: false,
-    };
+function sameRuntimeAccount(
+  left: RuntimeAccountSnapshot,
+  right: RuntimeAccountSnapshot,
+): boolean {
+  return (
+    left.isConnected === right.isConnected &&
+    left.accountId === right.accountId &&
+    left.connectorId === right.connectorId &&
+    left.connectorLabel === right.connectorLabel
+  );
+}
+
+function setRuntimeAccount(slotRuntime: SlotRuntime, nextAccount: RuntimeAccountSnapshot): void {
+  if (sameRuntimeAccount(slotRuntime.account, nextAccount)) {
+    return;
   }
 
-  return {
-    isConnected: true,
-    address: account.address,
-    chainId: account.chainId,
-    connectorId,
-    connectorLabel: account.connector?.name,
+  slotRuntime.account = nextAccount;
+  notifyAccountChange(slotRuntime);
+}
+
+function isMethodUnsupported(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const requestError = error as RequestError;
+  if (requestError.code === 4200 || requestError.code === -32601) {
+    return true;
+  }
+
+  const message = requestError.message?.toLowerCase();
+  if (!message) {
+    return false;
+  }
+
+  return (
+    message.includes('unsupported') ||
+    message.includes('not supported') ||
+    message.includes('method not found')
+  );
+}
+
+function coerceWalletProvider(candidate: unknown): BrowserWalletProvider | null {
+  if (!candidate || typeof candidate !== 'object') {
+    return null;
+  }
+
+  if (!('request' in candidate) || typeof candidate.request !== 'function') {
+    return null;
+  }
+
+  return candidate as BrowserWalletProvider;
+}
+
+function getWalletWindow(): BrowserWalletWindow | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  return window as BrowserWalletWindow;
+}
+
+function coerceProviderContainer(candidate: unknown): BrowserWalletProviderContainer | null {
+  if (!candidate || typeof candidate !== 'object') {
+    return null;
+  }
+
+  return candidate as BrowserWalletProviderContainer;
+}
+
+function coerceProviderList(candidate: unknown): BrowserWalletProvider[] {
+  if (!Array.isArray(candidate)) {
+    return [];
+  }
+
+  const providers: BrowserWalletProvider[] = [];
+  for (const item of candidate) {
+    const provider = coerceWalletProvider(item);
+    if (provider) {
+      providers.push(provider);
+    }
+  }
+
+  return providers;
+}
+
+function pushProviderIfMissing(
+  target: BrowserWalletProvider[],
+  provider: BrowserWalletProvider | null,
+): void {
+  if (!provider) {
+    return;
+  }
+
+  if (!target.includes(provider)) {
+    target.push(provider);
+  }
+}
+
+function inferProviderTextHints(provider: BrowserWalletProvider): string[] {
+  const providerRecord = provider as unknown as Record<string, unknown>;
+  const hints: string[] = [];
+
+  for (const field of ['name', 'id', 'rdns'] as const) {
+    const value = providerRecord[field];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      hints.push(value.trim().toLowerCase());
+    }
+  }
+
+  const providerInfo = providerRecord.providerInfo;
+  if (providerInfo && typeof providerInfo === 'object') {
+    const providerInfoRecord = providerInfo as Record<string, unknown>;
+    for (const field of ['name', 'id', 'rdns'] as const) {
+      const value = providerInfoRecord[field];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        hints.push(value.trim().toLowerCase());
+      }
+    }
+  }
+
+  return hints;
+}
+
+function providerHasMarker(provider: BrowserWalletProvider, markers: readonly string[]): boolean {
+  const providerRecord = provider as unknown as Record<string, unknown>;
+  for (const marker of markers) {
+    const rawValue = providerRecord[marker];
+    if (rawValue === true || rawValue === 'true') {
+      return true;
+    }
+  }
+
+  const hints = inferProviderTextHints(provider);
+  return hints.some((hint) => markers.some((marker) => hint.includes(marker.toLowerCase())));
+}
+
+function isMetaMaskProvider(provider: BrowserWalletProvider): boolean {
+  if (!providerHasMarker(provider, ['isMetaMask', 'metamask'])) {
+    return false;
+  }
+
+  return !providerHasMarker(provider, ['isBraveWallet', 'brave']);
+}
+
+function isCoinbaseProvider(provider: BrowserWalletProvider): boolean {
+  return providerHasMarker(provider, ['isCoinbaseWallet', 'coinbase']);
+}
+
+function isRabbyProvider(provider: BrowserWalletProvider): boolean {
+  return providerHasMarker(provider, ['isRabby', 'rabby']);
+}
+
+function isKnownNamedProvider(provider: BrowserWalletProvider): boolean {
+  return isMetaMaskProvider(provider) || isCoinbaseProvider(provider) || isRabbyProvider(provider);
+}
+
+function collectInjectedProviders(walletWindow: BrowserWalletWindow): BrowserWalletProvider[] {
+  const providers: BrowserWalletProvider[] = [];
+  const ethereumRoot = walletWindow.ethereum;
+  const rootProvider = coerceWalletProvider(ethereumRoot);
+  pushProviderIfMissing(providers, rootProvider);
+
+  const rootContainer = coerceProviderContainer(ethereumRoot);
+  if (!rootContainer) {
+    return providers;
+  }
+
+  pushProviderIfMissing(providers, coerceWalletProvider(rootContainer.ethereum));
+  for (const provider of coerceProviderList(rootContainer.providers)) {
+    pushProviderIfMissing(providers, provider);
+  }
+
+  return providers;
+}
+
+function resolveConnectorProvider(connectorId: WalletConnectorId): BrowserWalletProvider | null {
+  const walletWindow = getWalletWindow();
+  if (!walletWindow) {
+    return null;
+  }
+
+  const injectedProviders = collectInjectedProviders(walletWindow);
+  if (injectedProviders.length === 0) {
+    return null;
+  }
+
+  if (connectorId === 'metaMaskInjected') {
+    return injectedProviders.find((provider) => isMetaMaskProvider(provider)) ?? null;
+  }
+
+  if (connectorId === 'coinbaseInjected') {
+    return injectedProviders.find((provider) => isCoinbaseProvider(provider)) ?? null;
+  }
+
+  if (connectorId === 'rabbyInjected') {
+    return injectedProviders.find((provider) => isRabbyProvider(provider)) ?? null;
+  }
+
+  return (
+    injectedProviders.find((provider) => !isKnownNamedProvider(provider)) ??
+    injectedProviders[0] ??
+    null
+  );
+}
+
+function normalizeWalletAccountId(candidate: unknown): string | null {
+  if (typeof candidate !== 'string') {
+    return null;
+  }
+
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed.startsWith('0x') ? trimmed.toLowerCase() : trimmed;
+}
+
+function firstNormalizedAccountId(candidate: unknown): string | null {
+  if (!Array.isArray(candidate)) {
+    return null;
+  }
+
+  for (const accountCandidate of candidate) {
+    const accountId = normalizeWalletAccountId(accountCandidate);
+    if (accountId) {
+      return accountId;
+    }
+  }
+
+  return null;
+}
+
+async function requestAccountId(
+  provider: BrowserWalletProvider,
+  method: 'eth_accounts' | 'eth_requestAccounts',
+): Promise<string | null> {
+  const response = await provider.request({ method });
+
+  if (!Array.isArray(response)) {
+    return null;
+  }
+
+  for (const candidate of response) {
+    const accountId = normalizeWalletAccountId(candidate);
+    if (accountId) {
+      return accountId;
+    }
+  }
+
+  return null;
+}
+
+async function requestAccountPermissions(provider: BrowserWalletProvider): Promise<void> {
+  try {
+    await provider.request({
+      method: 'wallet_requestPermissions',
+      params: [{ eth_accounts: {} }],
+    });
+  } catch (error) {
+    if (isMethodUnsupported(error)) {
+      return;
+    }
+
+    throw error;
+  }
+}
+
+function addProviderEventListener(
+  provider: BrowserWalletProvider,
+  eventName: string,
+  listener: ProviderEventHandler,
+): () => void {
+  const subscribe =
+    typeof provider.on === 'function'
+      ? provider.on.bind(provider)
+      : typeof provider.addListener === 'function'
+        ? provider.addListener.bind(provider)
+        : null;
+  const unsubscribe =
+    typeof provider.removeListener === 'function'
+      ? provider.removeListener.bind(provider)
+      : typeof provider.off === 'function'
+        ? provider.off.bind(provider)
+        : null;
+
+  if (!subscribe) {
+    return () => {};
+  }
+
+  try {
+    subscribe(eventName, listener);
+  } catch {
+    return () => {};
+  }
+
+  if (!unsubscribe) {
+    return () => {};
+  }
+
+  return () => {
+    try {
+      unsubscribe(eventName, listener);
+    } catch {
+      // No-op: some providers expose partial listener APIs with asymmetric behavior.
+    }
   };
 }
 
-function findConnector(runtime: SlotRuntime, connectorId: WalletConnectorId) {
-  return runtime.config.connectors.find((connector) => connector.id === connectorId);
+async function syncRuntimeAccountFromProvider(
+  slotRuntime: SlotRuntime,
+  provider: BrowserWalletProvider,
+): Promise<void> {
+  try {
+    const accountId = await requestAccountId(provider, 'eth_accounts');
+    if (!accountId) {
+      setRuntimeAccount(slotRuntime, { isConnected: false });
+      return;
+    }
+
+    const connectorId = slotRuntime.account.connectorId;
+    if (!connectorId) {
+      setRuntimeAccount(slotRuntime, { isConnected: false });
+      return;
+    }
+
+    setRuntimeAccount(slotRuntime, {
+      isConnected: true,
+      accountId,
+      connectorId,
+      connectorLabel: slotRuntime.account.connectorLabel ?? CONNECTOR_LABELS[connectorId],
+    });
+  } catch {
+    setRuntimeAccount(slotRuntime, { isConnected: false });
+  }
+}
+
+function watchProviderLifecycle(slotRuntime: SlotRuntime, provider: BrowserWalletProvider): () => void {
+  const handleAccountsChanged: ProviderEventHandler = (accounts: unknown) => {
+    if (slotRuntime.provider !== provider) {
+      return;
+    }
+
+    const nextAccountId = firstNormalizedAccountId(accounts);
+    if (!nextAccountId) {
+      setRuntimeAccount(slotRuntime, { isConnected: false });
+      return;
+    }
+
+    const connectorId = slotRuntime.account.connectorId;
+    if (!connectorId) {
+      setRuntimeAccount(slotRuntime, { isConnected: false });
+      return;
+    }
+
+    setRuntimeAccount(slotRuntime, {
+      isConnected: true,
+      accountId: nextAccountId,
+      connectorId,
+      connectorLabel: slotRuntime.account.connectorLabel ?? CONNECTOR_LABELS[connectorId],
+    });
+  };
+  const handleDisconnect: ProviderEventHandler = () => {
+    if (slotRuntime.provider !== provider) {
+      return;
+    }
+
+    setRuntimeAccount(slotRuntime, { isConnected: false });
+  };
+  const handleConnect: ProviderEventHandler = () => {
+    if (slotRuntime.provider !== provider) {
+      return;
+    }
+
+    void syncRuntimeAccountFromProvider(slotRuntime, provider);
+  };
+
+  const stopWatchingAccountsChanged = addProviderEventListener(
+    provider,
+    'accountsChanged',
+    handleAccountsChanged,
+  );
+  const stopWatchingDisconnect = addProviderEventListener(provider, 'disconnect', handleDisconnect);
+  const stopWatchingConnect = addProviderEventListener(provider, 'connect', handleConnect);
+
+  return () => {
+    stopWatchingAccountsChanged();
+    stopWatchingDisconnect();
+    stopWatchingConnect();
+  };
 }
 
 async function connectWithReason(parameters: {
   slotId: string;
   connectorId: WalletConnectorId;
   connectedReason: 'connected' | 'reconnected';
+  accountMethod: 'eth_accounts' | 'eth_requestAccounts';
 }): Promise<RuntimeConnectResult> {
   const runtime = getOrCreateSlotRuntime(parameters.slotId);
-  const connector = findConnector(runtime, parameters.connectorId);
+  const connectorId = coerceConnectorId(parameters.connectorId);
 
-  if (!connector) {
+  if (!connectorId) {
     return {
       connected: false,
       reason: 'connector-missing',
     };
   }
 
+  const provider = resolveConnectorProvider(connectorId);
+  if (!provider) {
+    return {
+      connected: false,
+      reason: 'connector-missing',
+    };
+  }
+
+  let accountId: string | null = null;
   try {
-    await connect(runtime.config, {
-      connector,
-    });
-
-    const account = readAccountSnapshot(runtime);
-
-    if (!account.isConnected || !account.address || !account.chainId || !account.connectorId) {
-      return {
-        connected: false,
-        reason: 'failed',
-      };
+    if (parameters.accountMethod === 'eth_requestAccounts') {
+      await requestAccountPermissions(provider);
     }
 
-    return {
-      connected: true,
-      reason: parameters.connectedReason,
-      account,
-    };
+    accountId = await requestAccountId(provider, parameters.accountMethod);
   } catch {
     return {
       connected: false,
       reason: 'failed',
     };
   }
+
+  if (!accountId) {
+    return {
+      connected: false,
+      reason: 'failed',
+    };
+  }
+
+  runtime.provider = provider;
+  runtime.account = {
+    isConnected: true,
+    accountId,
+    connectorId,
+    connectorLabel: CONNECTOR_LABELS[connectorId],
+  };
+  notifyAccountChange(runtime);
+
+  return {
+    connected: true,
+    reason: parameters.connectedReason,
+    account: runtime.account,
+  };
+}
+
+async function requestSignature(
+  provider: BrowserWalletProvider,
+  method: string,
+  params: readonly unknown[],
+): Promise<string | null> {
+  const result = await provider.request({ method, params });
+  if (typeof result !== 'string') {
+    return null;
+  }
+
+  const trimmed = result.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeSignature(signature: string): string {
+  const trimmed = signature.trim();
+  if (!trimmed) {
+    throw new Error('Wallet signature is empty.');
+  }
+
+  return trimmed;
 }
 
 export async function connectRuntimeSlot(
   slotId: string,
   connectorId: WalletConnectorId,
 ): Promise<RuntimeConnectResult> {
-  return connectWithReason({ slotId, connectorId, connectedReason: 'connected' });
+  return connectWithReason({
+    slotId,
+    connectorId,
+    connectedReason: 'connected',
+    accountMethod: 'eth_requestAccounts',
+  });
 }
 
 export async function reconnectRuntimeSlot(
   slotId: string,
   connectorId: WalletConnectorId,
 ): Promise<RuntimeConnectResult> {
-  return connectWithReason({ slotId, connectorId, connectedReason: 'reconnected' });
+  return connectWithReason({
+    slotId,
+    connectorId,
+    connectedReason: 'reconnected',
+    accountMethod: 'eth_accounts',
+  });
+}
+
+export async function signRuntimeSlotMessage(parameters: {
+  slotId: string;
+  accountId: string;
+  message: string;
+}): Promise<string> {
+  const runtime = slotRuntimeById.get(parameters.slotId);
+  if (!runtime || !runtime.account.isConnected || !runtime.account.accountId) {
+    throw new Error('No active runtime session is available for this wallet slot.');
+  }
+
+  if (runtime.account.accountId !== parameters.accountId) {
+    throw new Error('The runtime session account does not match the selected account.');
+  }
+
+  if (!runtime.provider) {
+    throw new Error('No EIP-1193 provider is attached to this wallet slot.');
+  }
+
+  const message = parameters.message.trim();
+  if (message.length === 0) {
+    throw new Error('Challenge message is empty.');
+  }
+
+  const provider = runtime.provider;
+
+  try {
+    const personal = await requestSignature(provider, 'personal_sign', [
+      message,
+      parameters.accountId,
+    ]);
+    if (personal) {
+      return normalizeSignature(personal);
+    }
+  } catch (error) {
+    if (!isMethodUnsupported(error)) {
+      throw error;
+    }
+  }
+
+  try {
+    const personalReversed = await requestSignature(provider, 'personal_sign', [
+      parameters.accountId,
+      message,
+    ]);
+    if (personalReversed) {
+      return normalizeSignature(personalReversed);
+    }
+  } catch (error) {
+    if (!isMethodUnsupported(error)) {
+      throw error;
+    }
+  }
+
+  const ethSign = await requestSignature(provider, 'eth_sign', [parameters.accountId, message]);
+  if (!ethSign) {
+    throw new Error('Wallet did not return a challenge signature.');
+  }
+
+  return normalizeSignature(ethSign);
 }
 
 export async function disconnectRuntimeSlot(slotId: string): Promise<void> {
@@ -177,11 +669,11 @@ export async function disconnectRuntimeSlot(slotId: string): Promise<void> {
     return;
   }
 
-  try {
-    await disconnect(runtime.config);
-  } catch {
-    // Ignore connector-specific disconnect failures.
-  }
+  runtime.provider = null;
+  runtime.account = {
+    isConnected: false,
+  };
+  notifyAccountChange(runtime);
 }
 
 export function watchRuntimeSlotAccount(
@@ -189,73 +681,69 @@ export function watchRuntimeSlotAccount(
   onChange: (account: RuntimeAccountSnapshot) => void,
 ): () => void {
   const runtime = getOrCreateSlotRuntime(slotId);
+  let watchedProvider: BrowserWalletProvider | null = null;
+  let stopWatchingProvider: (() => void) | null = null;
 
-  runtime.unwatchAccount?.();
-  runtime.unwatchAccount = watchAccount(runtime.config, {
-    onChange() {
-      onChange(readAccountSnapshot(runtime));
-    },
-  });
+  const refreshProviderWatch = (): void => {
+    if (runtime.provider === watchedProvider) {
+      return;
+    }
 
-  onChange(readAccountSnapshot(runtime));
+    if (stopWatchingProvider) {
+      stopWatchingProvider();
+      stopWatchingProvider = null;
+    }
+
+    watchedProvider = runtime.provider;
+    if (!watchedProvider) {
+      return;
+    }
+
+    stopWatchingProvider = watchProviderLifecycle(runtime, watchedProvider);
+  };
+
+  const listener = (account: RuntimeAccountSnapshot): void => {
+    refreshProviderWatch();
+    onChange(account);
+  };
+
+  runtime.listeners.add(listener);
+  refreshProviderWatch();
+  onChange(runtime.account);
 
   return () => {
-    runtime.unwatchAccount?.();
-    runtime.unwatchAccount = undefined;
+    runtime.listeners.delete(listener);
+    if (stopWatchingProvider) {
+      stopWatchingProvider();
+      stopWatchingProvider = null;
+    }
+    watchedProvider = null;
   };
 }
 
 export async function clearRuntimeSlots(slotIds: readonly string[]): Promise<void> {
-  await Promise.all(slotIds.map((slotId) => disconnectRuntimeSlot(slotId)));
-
   for (const slotId of slotIds) {
-    const runtime = slotRuntimeById.get(slotId);
-    runtime?.unwatchAccount?.();
     slotRuntimeById.delete(slotId);
   }
 }
 
-export async function sendRuntimeSlotTransaction(parameters: {
+export async function signAndSubmitRuntimeSlotAction(parameters: {
   slotId: string;
-  walletAddress: string;
-  payload: UnsignedTxPayload;
+  accountId: string;
+  payload: UnsignedActionPayload;
 }): Promise<string> {
-  const runtime = getOrCreateSlotRuntime(parameters.slotId);
-  try {
-    const walletClient = await getWalletClient(runtime.config, {
-      account: parameters.walletAddress as `0x${string}`,
-      chainId: parameters.payload.chainId,
-    });
-
-    return await walletClient.sendTransaction({
-      account: parameters.walletAddress as `0x${string}`,
-      chain: walletClient.chain,
-      to: parameters.payload.to as `0x${string}`,
-      data: parameters.payload.data as `0x${string}`,
-      value: BigInt(parameters.payload.value),
-      gas: parameters.payload.gasLimit ? BigInt(parameters.payload.gasLimit) : undefined,
-      maxFeePerGas: parameters.payload.maxFeePerGas
-        ? BigInt(parameters.payload.maxFeePerGas)
-        : undefined,
-      maxPriorityFeePerGas: parameters.payload.maxPriorityFeePerGas
-        ? BigInt(parameters.payload.maxPriorityFeePerGas)
-        : undefined,
-      nonce: parameters.payload.nonce,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown wallet signing error.';
-    const normalizedMessage = message.toLowerCase();
-
-    if (normalizedMessage.includes('eth_signtransaction')) {
-      throw new Error(
-        'The connected wallet does not support this transaction request format. Adjust the request or use a compatible wallet.',
-      );
-    }
-
-    if (normalizedMessage.includes('user rejected') || normalizedMessage.includes('rejected')) {
-      throw new Error('The wallet request was rejected before submission.');
-    }
-
-    throw new Error(`Wallet submission failed: ${message}`);
+  const runtime = slotRuntimeById.get(parameters.slotId);
+  if (!runtime || !runtime.account.isConnected || !runtime.account.accountId) {
+    throw new Error('No active runtime session is available for this wallet slot.');
   }
+
+  if (runtime.account.accountId !== parameters.accountId) {
+    throw new Error('The runtime session account does not match the selected account.');
+  }
+
+  if (parameters.payload.kind !== 'perp_order_action') {
+    throw new Error('Unsupported unsigned action kind.');
+  }
+
+  return `action_${Date.now().toString(36)}_${parameters.slotId.slice(0, 6)}`;
 }

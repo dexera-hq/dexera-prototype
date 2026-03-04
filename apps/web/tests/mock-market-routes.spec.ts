@@ -1,113 +1,120 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { GET as getBalancesRoute } from '../app/api/mock/balances/route';
-import { GET as getPricesRoute } from '../app/api/mock/prices/route';
-import { GET as getTokensRoute } from '../app/api/mock/tokens/route';
-import type { Balance, SpotPrice, TokenMetadata } from '../lib/market-data/types';
+import { GET as getInstrumentsRoute } from '../app/api/mock/instruments/route';
+import { GET as getMarksRoute } from '../app/api/mock/marks/route';
+import { GET as getPositionsRoute } from '../app/api/mock/positions/route';
+import type { InstrumentMetadata, MarkPrice, PerpPosition } from '../lib/market-data/types';
 
 const ORIGINAL_ENV = {
   MOCK_MARKET_DATA: process.env.MOCK_MARKET_DATA,
   MOCK_MARKET_DATA_JITTER: process.env.MOCK_MARKET_DATA_JITTER,
-  DEFAULT_CHAIN: process.env.DEFAULT_CHAIN,
+  DEFAULT_VENUE: process.env.DEFAULT_VENUE,
 };
 
 beforeEach(() => {
   process.env.MOCK_MARKET_DATA = 'true';
   process.env.MOCK_MARKET_DATA_JITTER = 'false';
-  process.env.DEFAULT_CHAIN = 'hyperliquid';
+  process.env.DEFAULT_VENUE = 'hyperliquid';
 });
 
 afterEach(() => {
   process.env.MOCK_MARKET_DATA = ORIGINAL_ENV.MOCK_MARKET_DATA;
   process.env.MOCK_MARKET_DATA_JITTER = ORIGINAL_ENV.MOCK_MARKET_DATA_JITTER;
-  process.env.DEFAULT_CHAIN = ORIGINAL_ENV.DEFAULT_CHAIN;
+  process.env.DEFAULT_VENUE = ORIGINAL_ENV.DEFAULT_VENUE;
 });
 
 describe('mock market data routes', () => {
-  it('returns mock tokens from /api/mock/tokens', async () => {
-    const response = await getTokensRoute(new Request('http://localhost/api/mock/tokens?chain=hyperliquid'));
-    const payload = (await response.json()) as TokenMetadata[];
+  it('returns mock instruments from /api/mock/instruments', async () => {
+    const response = await getInstrumentsRoute(
+      new Request('http://localhost/api/mock/instruments?venue=hyperliquid'),
+    );
+    const payload = (await response.json()) as InstrumentMetadata[];
 
     expect(response.status).toBe(200);
     expect(payload.length).toBeGreaterThan(0);
     expect(payload[0]).toMatchObject({
-      symbol: expect.any(String),
+      instrument: expect.any(String),
       name: expect.any(String),
-      decimals: expect.any(Number),
-      chain: 'hyperliquid',
+      venue: 'hyperliquid',
     });
   });
 
-  it('returns spot price map shape with timestamp from /api/mock/prices', async () => {
-    const response = await getPricesRoute(
-      new Request('http://localhost/api/mock/prices?symbols=ETH,BTC&chain=hyperliquid'),
+  it('returns mark price map shape with timestamp from /api/mock/marks', async () => {
+    const response = await getMarksRoute(
+      new Request(
+        'http://localhost/api/mock/marks?instruments=ETH-PERP,BTC-PERP&venue=hyperliquid',
+      ),
     );
-    const payload = (await response.json()) as Record<string, SpotPrice>;
+    const payload = (await response.json()) as Record<string, MarkPrice>;
 
     expect(response.status).toBe(200);
-    expect(payload.ETH).toMatchObject({ symbol: 'ETH', price: expect.any(Number) });
-    expect(payload.BTC).toMatchObject({ symbol: 'BTC', price: expect.any(Number) });
-    if (!payload.ETH || !payload.BTC) {
-      throw new Error('Missing expected symbols in /api/mock/prices response');
-    }
-    expect(payload.ETH.timestampMs).toBeGreaterThan(0);
-    expect(payload.BTC.timestampMs).toBeGreaterThan(0);
+    expect(payload['ETH-PERP']).toMatchObject({
+      instrument: 'ETH-PERP',
+      price: expect.any(Number),
+    });
+    expect(payload['BTC-PERP']).toMatchObject({
+      instrument: 'BTC-PERP',
+      price: expect.any(Number),
+    });
+    expect(payload['ETH-PERP']?.timestampMs).toBeGreaterThan(0);
+    expect(payload['BTC-PERP']?.timestampMs).toBeGreaterThan(0);
   });
 
-  it('omits unknown symbols from /api/mock/prices', async () => {
-    const response = await getPricesRoute(
-      new Request('http://localhost/api/mock/prices?symbols=ETH,UNKNOWN&chain=hyperliquid'),
+  it('omits unknown instruments from /api/mock/marks', async () => {
+    const response = await getMarksRoute(
+      new Request(
+        'http://localhost/api/mock/marks?instruments=ETH-PERP,UNKNOWN-PERP&venue=hyperliquid',
+      ),
     );
-    const payload = (await response.json()) as Record<string, SpotPrice>;
+    const payload = (await response.json()) as Record<string, MarkPrice>;
 
     expect(response.status).toBe(200);
-    expect(payload.ETH).toBeDefined();
-    expect(payload.UNKNOWN).toBeUndefined();
+    expect(payload['ETH-PERP']).toBeDefined();
+    expect(payload['UNKNOWN-PERP']).toBeUndefined();
   });
 
-  it('returns chain-scoped symbols when /api/mock/prices is called without symbols', async () => {
-    const tokensResponse = await getTokensRoute(
-      new Request('http://localhost/api/mock/tokens?chain=hyperliquid'),
+  it('returns venue-scoped instruments when /api/mock/marks is called without instrument list', async () => {
+    const instrumentsResponse = await getInstrumentsRoute(
+      new Request('http://localhost/api/mock/instruments?venue=hyperliquid'),
     );
-    const tokensPayload = (await tokensResponse.json()) as TokenMetadata[];
-    const expectedSymbols = tokensPayload.map((token) => token.symbol.toUpperCase()).sort();
+    const instrumentsPayload = (await instrumentsResponse.json()) as InstrumentMetadata[];
+    const expectedInstruments = instrumentsPayload
+      .map((item) => item.instrument.toUpperCase())
+      .sort();
 
-    const response = await getPricesRoute(new Request('http://localhost/api/mock/prices?chain=hyperliquid'));
-    const payload = (await response.json()) as Record<string, SpotPrice>;
-    const returnedSymbols = Object.keys(payload).sort();
+    const response = await getMarksRoute(
+      new Request('http://localhost/api/mock/marks?venue=hyperliquid'),
+    );
+    const payload = (await response.json()) as Record<string, MarkPrice>;
+    const returnedInstruments = Object.keys(payload).sort();
 
     expect(response.status).toBe(200);
-    expect(returnedSymbols).toEqual(expectedSymbols);
+    expect(returnedInstruments).toEqual(expectedInstruments);
   });
 
-  it('returns an empty price map when chain is unsupported, even if symbols are provided', async () => {
-    const response = await getPricesRoute(
-      new Request('http://localhost/api/mock/prices?symbols=ETH,BTC&chain=unsupported-chain'),
+  it('returns an empty mark map when venue is unsupported', async () => {
+    const response = await getMarksRoute(
+      new Request(
+        'http://localhost/api/mock/marks?instruments=ETH-PERP,BTC-PERP&venue=unsupported-venue',
+      ),
     );
-    const payload = (await response.json()) as Record<string, SpotPrice>;
+    const payload = (await response.json()) as Record<string, MarkPrice>;
 
     expect(response.status).toBe(200);
     expect(payload).toEqual({});
   });
 
-  it('returns an empty price map when chain is unsupported and symbols are omitted', async () => {
-    const response = await getPricesRoute(
-      new Request('http://localhost/api/mock/prices?chain=unsupported-chain'),
+  it('returns deterministic positions from /api/mock/positions', async () => {
+    const response = await getPositionsRoute(
+      new Request('http://localhost/api/mock/positions?venue=hyperliquid&accountId=acct_001'),
     );
-    const payload = (await response.json()) as Record<string, SpotPrice>;
-
-    expect(response.status).toBe(200);
-    expect(payload).toEqual({});
-  });
-
-  it('returns deterministic balances from /api/mock/balances', async () => {
-    const response = await getBalancesRoute(new Request('http://localhost/api/mock/balances?chain=hyperliquid'));
-    const payload = (await response.json()) as Balance[];
+    const payload = (await response.json()) as PerpPosition[];
 
     expect(response.status).toBe(200);
     expect(payload.length).toBeGreaterThan(0);
     expect(payload[0]).toMatchObject({
-      symbol: expect.any(String),
-      balance: expect.any(String),
+      instrument: expect.any(String),
+      direction: expect.stringMatching(/long|short/),
+      size: expect.any(String),
     });
   });
 });

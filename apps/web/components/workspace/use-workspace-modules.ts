@@ -47,7 +47,9 @@ function hasUniqueModuleIds(modules: WorkspaceModule[]): boolean {
   return true;
 }
 
-function parseLegacyPersistedLayout(rawValue: string): { modules: WorkspaceModule[]; nextModuleId: number } | null {
+function parseLegacyPersistedLayout(
+  rawValue: string,
+): { modules: WorkspaceModule[]; nextModuleId: number } | null {
   let parsedValue: unknown;
   try {
     parsedValue = JSON.parse(rawValue);

@@ -5,7 +5,13 @@ export function TerminalHeader() {
   return (
     <header className="terminal-topbar">
       <div className="brand-wrap">
-        <Button type="button" variant="soft" size="icon" className="icon-button" aria-label="Open navigation">
+        <Button
+          type="button"
+          variant="soft"
+          size="icon"
+          className="icon-button"
+          aria-label="Open navigation"
+        >
           &#9776;
         </Button>
         <h1 className="brand" data-testid="app-brand">

@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { WorkspaceMarketDataState } from '@/components/workspace/use-workspace-market-data';
 import type { WorkspaceModule } from '@/components/workspace/types';
-import { buildUnsignedTransaction } from '@/lib/wallet/build-unsigned-transaction';
-import { sendRuntimeSlotTransaction } from '@/lib/wallet/multi-session-runtime';
+import { buildUnsignedAction } from '@/lib/wallet/build-unsigned-transaction';
+import { getWalletVenueLabel } from '@/lib/wallet/chains';
+import { signAndSubmitRuntimeSlotAction } from '@/lib/wallet/multi-session-runtime';
+import { isWalletSlotTradable } from '@/lib/wallet/types';
 import { useWalletManager } from '@/lib/wallet/wallet-manager-context';
-import { submitUnsignedTransaction } from '@/lib/wallet/sign-unsigned-transaction';
+import { submitUnsignedAction } from '@/lib/wallet/sign-unsigned-transaction';
 import {
   SIGNING_ONLY_DISCLAIMER_LINES,
   TransactionGuardrailError,
@@ -21,12 +23,12 @@ type TradeExecutionState =
   | { status: 'success'; message: string }
   | { status: 'error'; message: string };
 
-function truncateAddress(address: string): string {
-  if (address.length <= 12) {
-    return address;
+function truncateAccountId(accountId: string): string {
+  if (accountId.length <= 14) {
+    return accountId;
   }
 
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  return `${accountId.slice(0, 8)}...${accountId.slice(-4)}`;
 }
 
 function formatUsd(value: string): string {
@@ -42,28 +44,40 @@ function formatUsd(value: string): string {
   })}`;
 }
 
+function resolveTradeInstrument(marketData: WorkspaceMarketDataState): string {
+  const preferred = marketData.instruments.find(
+    (instrument) => instrument.instrument === 'ETH-PERP',
+  );
+  if (preferred) {
+    return preferred.instrument;
+  }
+
+  return marketData.instruments[0]?.instrument ?? 'ETH-PERP';
+}
+
 function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
   const { activeSlot } = useWalletManager();
-  const ethToken = marketData.tokens.find((token) => token.symbol.toUpperCase() === 'ETH');
-  const ethPrice = marketData.prices.ETH;
-  const amountLabel = `${ethToken?.symbol ?? 'ETH'} · ${ethToken?.decimals ?? 18} decimals`;
+  const instrument = resolveTradeInstrument(marketData);
+  const mark = marketData.marks[instrument];
 
-  const [price, setPrice] = useState(() => (ethPrice ? ethPrice.price.toFixed(2) : '0.00'));
-  const [amount, setAmount] = useState('0.10');
+  const [price, setPrice] = useState(() => (mark ? mark.price.toFixed(2) : '0.00'));
+  const [size, setSize] = useState('0.10');
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [executionState, setExecutionState] = useState<TradeExecutionState>({
     status: 'idle',
-    message: 'Server-built unsigned transaction validation is available from the trade confirmation modal.',
+    message:
+      'Server-built unsigned action validation is available from the trade confirmation modal.',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showValidationToast, setShowValidationToast] = useState(false);
+  const canTradeWithActiveWallet = isWalletSlotTradable(activeSlot);
 
   const activeWalletLabel = useMemo(() => {
     if (!activeSlot) {
       return 'No wallet connected';
     }
 
-    return `${truncateAddress(activeSlot.walletAddress)} · Chain ${activeSlot.chainId}`;
+    return `${truncateAccountId(activeSlot.accountId)} · ${getWalletVenueLabel(activeSlot.venue)}`;
   }, [activeSlot]);
 
   useEffect(() => {
@@ -98,10 +112,10 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
   }, [showValidationToast]);
 
   useEffect(() => {
-    if (ethPrice) {
-      setPrice(ethPrice.price.toFixed(2));
+    if (mark) {
+      setPrice(mark.price.toFixed(2));
     }
-  }, [ethPrice]);
+  }, [mark]);
 
   const handleTradeSubmit = async () => {
     if (!activeSlot) {
@@ -111,34 +125,44 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
       });
       return;
     }
+    if (!canTradeWithActiveWallet) {
+      const reason =
+        activeSlot.eligibilityReason ?? 'Connected wallet is not eligible to trade on this venue.';
+      setExecutionState({
+        status: 'error',
+        message: reason,
+      });
+      return;
+    }
 
     setIsSubmitting(true);
     setExecutionState({
       status: 'pending',
-      message: 'Requesting an unsigned transaction from the server and running client-side signing checks...',
+      message:
+        'Requesting an unsigned action from the server and running client-side signing checks...',
     });
 
     try {
-      const response = await buildUnsignedTransaction({
+      const response = await buildUnsignedAction({
         order: {
-          walletAddress: activeSlot.walletAddress,
-          chainId: activeSlot.chainId,
-          symbol: 'ETH/USDT',
+          accountId: activeSlot.accountId,
+          venue: activeSlot.venue,
+          instrument,
           side: 'buy',
           type: 'limit',
-          quantity: amount.trim() || '0.10',
-          limitPrice: price.trim() || (ethPrice ? ethPrice.price.toFixed(2) : '0.00'),
+          size: size.trim() || '0.10',
+          limitPrice: price.trim() || (mark ? mark.price.toFixed(2) : '0.00'),
         },
       });
 
-      const submission = await submitUnsignedTransaction({
-        payload: response.unsignedTxPayload,
+      const submission = await submitUnsignedAction({
+        payload: response.unsignedActionPayload,
         activeWallet: activeSlot,
         submitter: {
-          sendTransaction: async ({ walletAddress, payload }) =>
-            sendRuntimeSlotTransaction({
+          sendAction: async ({ accountId, payload }) =>
+            signAndSubmitRuntimeSlotAction({
               slotId: activeSlot.id,
-              walletAddress,
+              accountId,
               payload,
             }),
         },
@@ -146,7 +170,7 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
 
       setExecutionState({
         status: 'success',
-        message: `Wallet submitted transaction ${submission.transactionHash} for ${submission.walletAddress} on chain ${submission.chainId}. Unsigned payload ${submission.unsignedTxPayloadId} passed client-side validation before submission.`,
+        message: `Wallet submitted action ${submission.actionHash} for ${submission.accountId} on ${submission.venue}. Unsigned payload ${submission.unsignedActionPayloadId} passed client-side validation before submission.`,
       });
       setIsConfirmOpen(false);
       setShowValidationToast(true);
@@ -154,7 +178,7 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
       const message =
         error instanceof TransactionGuardrailError || error instanceof Error
           ? error.message
-          : 'Trade signing demo failed unexpectedly.';
+          : 'Perp action signing demo failed unexpectedly.';
 
       setExecutionState({
         status: 'error',
@@ -176,34 +200,34 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
         </Button>
       </div>
       <label>
-        Price
+        Limit Price
         <Input value={price} onChange={(event) => setPrice(event.target.value)} />
       </label>
       <label>
-        Amount ({amountLabel})
-        <Input value={amount} onChange={(event) => setAmount(event.target.value)} />
+        Size ({instrument})
+        <Input value={size} onChange={(event) => setSize(event.target.value)} />
       </label>
-      <div className="quick-split" role="group" aria-label="Allocation presets">
-        <Button type="button" variant="soft" size="sm" onClick={() => setAmount('0.25')}>
-          25%
+      <div className="quick-split" role="group" aria-label="Size presets">
+        <Button type="button" variant="soft" size="sm" onClick={() => setSize('0.10')}>
+          0.10
         </Button>
-        <Button type="button" variant="soft" size="sm" onClick={() => setAmount('0.50')}>
-          50%
+        <Button type="button" variant="soft" size="sm" onClick={() => setSize('0.25')}>
+          0.25
         </Button>
-        <Button type="button" variant="soft" size="sm" onClick={() => setAmount('0.75')}>
-          75%
+        <Button type="button" variant="soft" size="sm" onClick={() => setSize('0.50')}>
+          0.50
         </Button>
-        <Button type="button" variant="soft" size="sm" onClick={() => setAmount('1.00')}>
-          100%
+        <Button type="button" variant="soft" size="sm" onClick={() => setSize('1.00')}>
+          1.00
         </Button>
       </div>
       <Button
         type="button"
         className="trade-submit"
         onClick={() => setIsConfirmOpen(true)}
-        disabled={isSubmitting}
+        disabled={isSubmitting || !canTradeWithActiveWallet}
       >
-        Review and Buy ETH
+        Review and Submit {instrument}
       </Button>
 
       {executionState.status !== 'idle' ? (
@@ -239,7 +263,7 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
                   Review signing details
                 </h3>
                 <p className="trade-modal-subtitle">
-                  Confirm the unsigned transaction inputs before the wallet signs locally.
+                  Confirm the unsigned action inputs before the wallet signs locally.
                 </p>
               </div>
               <Button
@@ -257,28 +281,28 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
 
             <div className="trade-modal-summary">
               <div className="trade-summary-row">
-                <span>Wallet</span>
+                <span>Account</span>
                 <strong>{activeWalletLabel}</strong>
               </div>
               <div className="trade-summary-row">
-                <span>Pair</span>
-                <strong>ETH/USDT</strong>
+                <span>Instrument</span>
+                <strong>{instrument}</strong>
               </div>
               <div className="trade-summary-row">
                 <span>Limit price</span>
-                <strong>{formatUsd(price || (ethPrice ? ethPrice.price.toFixed(2) : '0.00'))}</strong>
+                <strong>{formatUsd(price || (mark ? mark.price.toFixed(2) : '0.00'))}</strong>
               </div>
               <div className="trade-summary-row">
-                <span>Amount</span>
-                <strong>{amount || '0.10'} {ethToken?.symbol ?? 'ETH'}</strong>
+                <span>Size</span>
+                <strong>{size || '0.10'}</strong>
               </div>
               <div className="trade-summary-row">
                 <span>Estimated notional</span>
                 <strong>
                   {formatUsd(
                     String(
-                      (Number(price || (ethPrice ? ethPrice.price.toFixed(2) : '0.00')) || 0) *
-                        (Number(amount || '0.10') || 0),
+                      (Number(price || (mark ? mark.price.toFixed(2) : '0.00')) || 0) *
+                        (Number(size || '0.10') || 0),
                     ),
                   )}
                 </strong>
@@ -286,12 +310,15 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
             </div>
 
             <div className="trade-modal-guardrails">
-            <p className="trade-modal-section-title">Signing guardrails</p>
+              <p className="trade-modal-section-title">Signing guardrails</p>
               <ul className="trade-disclaimer-list">
                 {SIGNING_ONLY_DISCLAIMER_LINES.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
-                <li>Unsigned transaction data is fetched from the backend endpoint before wallet submission.</li>
+                <li>
+                  Unsigned action payload is fetched from the backend endpoint before wallet
+                  submission.
+                </li>
               </ul>
             </div>
 
@@ -320,7 +347,8 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
           <div className="trade-validation-toast-copy">
             <p className="trade-validation-toast-title">Validation passed</p>
             <p className="trade-validation-toast-message">
-              Wallet binding, chain match, and unsigned-payload checks all passed before wallet submission.
+              Account binding, venue match, and unsigned-action checks all passed before wallet
+              submission.
             </p>
           </div>
         </div>
@@ -329,7 +357,7 @@ function TradePanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
   );
 }
 
-const DEFAULT_SYMBOL_ORDER = ['ETH', 'BTC', 'USDC', 'SOL'];
+const DEFAULT_INSTRUMENT_ORDER = ['BTC-PERP', 'ETH-PERP', 'SOL-PERP'];
 
 const USD_FORMATTER = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -344,14 +372,14 @@ function formatUSD(value: number): string {
 
 function metricPill(
   key: string,
-  pair: string,
+  instrument: string,
   price: string,
   delta: string,
   positive: boolean,
 ) {
   return (
     <li className="ticker-pill" key={key}>
-      <span>{pair}</span>
+      <span>{instrument}</span>
       <strong>{price}</strong>
       <em className={positive ? 'up' : 'down'}>{delta}</em>
     </li>
@@ -366,15 +394,17 @@ function deterministicDelta(symbol: string): { label: string; positive: boolean 
   return { label, positive };
 }
 
-function resolveOverviewSymbols(marketData: WorkspaceMarketDataState): string[] {
-  if (marketData.tokens.length > 0) {
-    return marketData.tokens.slice(0, 4).map((token) => token.symbol.toUpperCase());
+function resolveOverviewInstruments(marketData: WorkspaceMarketDataState): string[] {
+  if (marketData.instruments.length > 0) {
+    return marketData.instruments
+      .slice(0, 4)
+      .map((instrument) => instrument.instrument.toUpperCase());
   }
-  return DEFAULT_SYMBOL_ORDER;
+  return DEFAULT_INSTRUMENT_ORDER;
 }
 
-function parseBalance(balance: string): number {
-  const parsed = Number.parseFloat(balance);
+function parseNumeric(value: string): number {
+  const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
@@ -391,23 +421,25 @@ type ModuleContentProps = {
 };
 
 export function ModuleContent({ module, marketData }: ModuleContentProps) {
-  const tokenBySymbol = new Map(
-    marketData.tokens.map((token) => [token.symbol.toUpperCase(), token] as const),
+  const instrumentById = new Map(
+    marketData.instruments.map(
+      (instrument) => [instrument.instrument.toUpperCase(), instrument] as const,
+    ),
   );
 
   if (module.kind === 'overview') {
-    const overviewSymbols = resolveOverviewSymbols(marketData);
+    const overviewInstruments = resolveOverviewInstruments(marketData);
     return (
       <>
         {renderMarketDataError(marketData.error)}
         <ul className="ticker-row">
-          {overviewSymbols.map((symbol) => {
-            const spotPrice = marketData.prices[symbol];
-            const delta = deterministicDelta(symbol);
+          {overviewInstruments.map((instrument) => {
+            const mark = marketData.marks[instrument];
+            const delta = deterministicDelta(instrument);
             return metricPill(
-              symbol,
-              `${symbol}/USD`,
-              spotPrice ? formatUSD(spotPrice.price) : '--',
+              instrument,
+              instrument,
+              mark ? formatUSD(mark.price) : '--',
               delta.label,
               delta.positive,
             );
@@ -418,16 +450,17 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
   }
 
   if (module.kind === 'chart') {
-    const ethPrice = marketData.prices.ETH;
-    const delta = deterministicDelta('ETH');
+    const instrument = resolveTradeInstrument(marketData);
+    const mark = marketData.marks[instrument];
+    const delta = deterministicDelta(instrument);
 
     return (
       <>
         {renderMarketDataError(marketData.error)}
         <div className="chart-wrap">
           <div className="chart-meta">
-            <p className="pair">ETH/USD</p>
-            <p className="price">{ethPrice ? formatUSD(ethPrice.price) : '--'}</p>
+            <p className="pair">{instrument}</p>
+            <p className="price">{mark ? formatUSD(mark.price) : '--'}</p>
             <p className={`delta ${delta.positive ? 'up' : 'down'}`}>{delta.label}</p>
           </div>
           <div className="chart-frame">
@@ -465,9 +498,10 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
   }
 
   if (module.kind === 'orderbook') {
-    const ethPrice = marketData.prices.ETH?.price ?? 0;
-    const bid = ethPrice > 0 ? ethPrice - 0.7 : 2845.1;
-    const ask = ethPrice > 0 ? ethPrice + 0.7 : 2846.8;
+    const instrument = resolveTradeInstrument(marketData);
+    const mid = marketData.marks[instrument]?.price ?? 3200;
+    const bid = mid - 0.7;
+    const ask = mid + 0.7;
 
     return (
       <>
@@ -500,46 +534,45 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
   }
 
   if (module.kind === 'positions') {
-    const balances = marketData.balances;
-    const totalValue = balances.reduce((sum, balance) => {
-      const spotPrice = marketData.prices[balance.symbol.toUpperCase()]?.price ?? 0;
-      return sum + parseBalance(balance.balance) * spotPrice;
-    }, 0);
+    const positions = marketData.positions;
+    const totalValue = positions.reduce(
+      (sum, position) => sum + parseNumeric(position.notionalValue),
+      0,
+    );
 
     return (
       <div className="positions">
         {renderMarketDataError(marketData.error)}
         <div className="positions-pnl">
-          TOTAL VALUE: <strong>{formatUSD(totalValue)}</strong>
+          TOTAL NOTIONAL: <strong>{formatUSD(totalValue)}</strong>
         </div>
         <div className="positions-grid positions-head">
-          <span>Asset</span>
-          <span>Name</span>
-          <span>Decimals</span>
-          <span>Spot</span>
-          <span>Balance</span>
-          <span>Value</span>
+          <span>Instrument</span>
+          <span>Direction</span>
+          <span>Size</span>
+          <span>Entry</span>
+          <span>Mark</span>
+          <span>Unrealized PnL</span>
         </div>
-        {balances.map((balance) => {
-          const symbol = balance.symbol.toUpperCase();
-          const token = tokenBySymbol.get(symbol);
-          const spotPrice = marketData.prices[symbol];
-          const numericBalance = parseBalance(balance.balance);
-          const usdValue = (spotPrice?.price ?? 0) * numericBalance;
-
+        {positions.map((position) => {
+          const instrument = position.instrument.toUpperCase();
+          const instrumentMetadata = instrumentById.get(instrument);
           return (
-            <div className="positions-grid" key={symbol}>
-              <strong>{symbol}</strong>
-              <span className="tag">{token?.name ?? 'Unknown asset'}</span>
-              <span>{token?.decimals ?? '--'}</span>
-              <strong>{spotPrice ? formatUSD(spotPrice.price) : '--'}</strong>
-              <span>{balance.balance}</span>
-              <strong className="up">{spotPrice ? formatUSD(usdValue) : '--'}</strong>
+            <div className="positions-grid" key={`${instrument}-${position.direction}`}>
+              <strong>{instrument}</strong>
+              <span className="tag">{position.direction.toUpperCase()}</span>
+              <span>{position.size}</span>
+              <strong>{formatUsd(position.entryPrice)}</strong>
+              <strong>{formatUsd(position.markPrice)}</strong>
+              <strong className={parseNumeric(position.unrealizedPnlUsd) >= 0 ? 'up' : 'down'}>
+                {formatUsd(position.unrealizedPnlUsd)}
+                {instrumentMetadata?.venue ? ` · ${instrumentMetadata.venue}` : ''}
+              </strong>
             </div>
           );
         })}
-        {marketData.loading && balances.length === 0 ? (
-          <p className="placeholder-text">Loading balances...</p>
+        {marketData.loading && positions.length === 0 ? (
+          <p className="placeholder-text">Loading positions...</p>
         ) : null}
       </div>
     );
