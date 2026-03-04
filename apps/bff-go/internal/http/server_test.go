@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -367,6 +368,13 @@ func TestBuildUnsignedActionAsterMock(t *testing.T) {
 	if unsignedPayload["kind"] != "perp_order_action" {
 		t.Fatalf("expected kind=perp_order_action, got %v", unsignedPayload["kind"])
 	}
+	walletRequest, ok := unsignedPayload["walletRequest"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected walletRequest object, got %T", unsignedPayload["walletRequest"])
+	}
+	if walletRequest["method"] != "wallet_perp_submitAction" {
+		t.Fatalf("expected walletRequest method, got %v", walletRequest["method"])
+	}
 }
 
 func TestBuildUnsignedActionNormalizesVenueForAdapterResolution(t *testing.T) {
@@ -394,6 +402,13 @@ func TestBuildUnsignedActionNormalizesVenueForAdapterResolution(t *testing.T) {
 	}
 	if unsignedPayload["venue"] != "aster" {
 		t.Fatalf("expected normalized venue=aster, got %v", unsignedPayload["venue"])
+	}
+	walletRequest, ok := unsignedPayload["walletRequest"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected walletRequest object, got %T", unsignedPayload["walletRequest"])
+	}
+	if walletRequest["method"] == "" {
+		t.Fatalf("expected walletRequest method to be non-empty")
 	}
 }
 
@@ -514,6 +529,100 @@ func TestHyperliquidPreviewUsesVenueAdapter(t *testing.T) {
 	}
 	if body["previewId"] != "prv_hl_001" {
 		t.Fatalf("expected previewId from upstream, got %v", body["previewId"])
+	}
+}
+
+func TestHyperliquidBuildUnsignedActionIncludesWalletRequest(t *testing.T) {
+	previousResolver := venueAdapterResolver
+	venueAdapterResolver = func(venue venueID) (perpVenueAdapter, error) {
+		if venue != venueHyperliquid {
+			t.Fatalf("expected venueHyperliquid, got %s", venue)
+		}
+		return fakeVenueAdapter{
+			unsignedResponse: buildUnsignedActionResponse{
+				OrderID:       "ord_hl_001",
+				SigningPolicy: "client-signing-only",
+				Disclaimer:    clientSigningOnlyDisclaimer,
+				UnsignedActionPayload: unsignedActionPayload{
+					ID:        "uap_hl_001",
+					AccountID: "acct_001",
+					Venue:     venueHyperliquid,
+					Kind:      "perp_order_action",
+					Action: map[string]any{
+						"instrument": "BTC-PERP",
+					},
+					WalletRequest: walletRequestPayload{
+						Method: "wallet_perp_submitAction",
+						Params: []any{
+							map[string]any{"payloadId": "uap_hl_001"},
+						},
+					},
+				},
+			},
+		}, nil
+	}
+	defer func() {
+		venueAdapterResolver = previousResolver
+	}()
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/actions/unsigned",
+		validBuildUnsignedActionBody("hyperliquid"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected valid JSON body: %v", err)
+	}
+
+	unsignedPayload, ok := body["unsignedActionPayload"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected unsignedActionPayload object, got %T", body["unsignedActionPayload"])
+	}
+	walletRequest, ok := unsignedPayload["walletRequest"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected walletRequest object, got %T", unsignedPayload["walletRequest"])
+	}
+	if walletRequest["method"] != "wallet_perp_submitAction" {
+		t.Fatalf("expected walletRequest method, got %v", walletRequest["method"])
+	}
+}
+
+func TestHyperliquidBuildUnsignedActionRejectsMissingWalletRequest(t *testing.T) {
+	previousResolver := venueAdapterResolver
+	venueAdapterResolver = func(venue venueID) (perpVenueAdapter, error) {
+		if venue != venueHyperliquid {
+			t.Fatalf("expected venueHyperliquid, got %s", venue)
+		}
+		return fakeVenueAdapter{
+			unsignedError: errors.New("unsigned action is missing a wallet request envelope"),
+		}, nil
+	}
+	defer func() {
+		venueAdapterResolver = previousResolver
+	}()
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/actions/unsigned",
+		validBuildUnsignedActionBody("hyperliquid"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502, got %d body=%s", rr.Code, rr.Body.String())
 	}
 }
 

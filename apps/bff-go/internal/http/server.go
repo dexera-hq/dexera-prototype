@@ -180,11 +180,17 @@ type perpOrderPreviewResponse struct {
 }
 
 type unsignedActionPayload struct {
-	ID        string         `json:"id"`
-	AccountID string         `json:"accountId"`
-	Venue     venueID        `json:"venue"`
-	Kind      string         `json:"kind"`
-	Action    map[string]any `json:"action"`
+	ID            string               `json:"id"`
+	AccountID     string               `json:"accountId"`
+	Venue         venueID              `json:"venue"`
+	Kind          string               `json:"kind"`
+	Action        map[string]any       `json:"action"`
+	WalletRequest walletRequestPayload `json:"walletRequest"`
+}
+
+type walletRequestPayload struct {
+	Method string `json:"method"`
+	Params []any  `json:"params,omitempty"`
 }
 
 type buildUnsignedActionResponse struct {

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -74,31 +75,46 @@ func (a *hyperliquidAdapter) PreviewOrder(
 	r *http.Request,
 	req buildUnsignedActionRequest,
 ) (perpOrderPreviewResponse, error) {
-	payload, err := a.postJSON(r.Context(), "/v1/perp/orders/preview", map[string]any{"order": req.Order})
+	coin := normalizePerpCoinFromInstrument(req.Order.Instrument)
+	if coin == "" {
+		return perpOrderPreviewResponse{}, errors.New("instrument is required")
+	}
+
+	payload, err := a.postJSON(r.Context(), "/info", map[string]any{
+		"type": "allMids",
+	})
 	if err != nil {
 		return perpOrderPreviewResponse{}, err
 	}
 
-	previewID := stringField(payload, "previewId")
-	if previewID == "" {
-		previewID = fmt.Sprintf("prv_hl_%d", time.Now().UTC().UnixNano())
-	}
-	markPrice := optionalString(payload, "markPrice")
-	estimatedNotional := stringField(payload, "estimatedNotional")
-	if estimatedNotional == "" {
-		estimatedNotional = "0"
-	}
-	estimatedFee := stringField(payload, "estimatedFee")
-	if estimatedFee == "" {
-		estimatedFee = "0"
-	}
-	expiresAt := stringField(payload, "expiresAt")
-	if expiresAt == "" {
-		expiresAt = time.Now().UTC().Add(8 * time.Second).Format(time.RFC3339)
+	markPriceValue := stringField(payload, coin)
+	if markPriceValue == "" {
+		return perpOrderPreviewResponse{}, fmt.Errorf("failed to resolve mark price for %s", coin)
 	}
 
+	markPrice, err := strconv.ParseFloat(markPriceValue, 64)
+	if err != nil {
+		return perpOrderPreviewResponse{}, fmt.Errorf("failed to parse mark price for %s", coin)
+	}
+
+	size, err := strconv.ParseFloat(strings.TrimSpace(req.Order.Size), 64)
+	if err != nil {
+		return perpOrderPreviewResponse{}, errors.New("size must be a valid number")
+	}
+
+	priceForNotional := markPrice
+	if req.Order.LimitPrice != nil && strings.TrimSpace(*req.Order.LimitPrice) != "" {
+		limitPrice, parseErr := strconv.ParseFloat(strings.TrimSpace(*req.Order.LimitPrice), 64)
+		if parseErr == nil && limitPrice > 0 {
+			priceForNotional = limitPrice
+		}
+	}
+
+	estimatedNotional := fmt.Sprintf("%.2f", size*priceForNotional)
+	estimatedFee := fmt.Sprintf("%.2f", size*priceForNotional*0.00045)
+
 	return perpOrderPreviewResponse{
-		PreviewID:         previewID,
+		PreviewID:         fmt.Sprintf("prv_hl_%d", time.Now().UTC().UnixNano()),
 		AccountID:         req.Order.AccountID,
 		Venue:             req.Order.Venue,
 		Instrument:        req.Order.Instrument,
@@ -106,10 +122,10 @@ func (a *hyperliquidAdapter) PreviewOrder(
 		Type:              req.Order.Type,
 		Size:              req.Order.Size,
 		LimitPrice:        req.Order.LimitPrice,
-		MarkPrice:         markPrice,
+		MarkPrice:         &markPriceValue,
 		EstimatedNotional: estimatedNotional,
 		EstimatedFee:      estimatedFee,
-		ExpiresAt:         expiresAt,
+		ExpiresAt:         time.Now().UTC().Add(8 * time.Second).Format(time.RFC3339),
 		Source:            string(venueHyperliquid),
 	}, nil
 }
@@ -118,41 +134,103 @@ func (a *hyperliquidAdapter) BuildUnsignedAction(
 	r *http.Request,
 	req buildUnsignedActionRequest,
 ) (buildUnsignedActionResponse, error) {
-	payload, err := a.postJSON(r.Context(), "/v1/perp/actions/unsigned", map[string]any{"order": req.Order})
+	coin := normalizePerpCoinFromInstrument(req.Order.Instrument)
+	if coin == "" {
+		return buildUnsignedActionResponse{}, errors.New("instrument is required")
+	}
+
+	metaPayload, err := a.postJSON(r.Context(), "/info", map[string]any{
+		"type": "meta",
+	})
+	if err != nil {
+		return buildUnsignedActionResponse{}, err
+	}
+	asset, err := resolvePerpAsset(metaPayload, coin)
 	if err != nil {
 		return buildUnsignedActionResponse{}, err
 	}
 
-	action, _ := payload["action"].(map[string]any)
-	if action == nil {
-		action = map[string]any{
-			"instrument": req.Order.Instrument,
-			"side":       req.Order.Side,
-			"type":       req.Order.Type,
-			"size":       req.Order.Size,
-			"limitPrice": req.Order.LimitPrice,
+	isBuy := strings.EqualFold(strings.TrimSpace(req.Order.Side), "buy")
+	reduceOnly := req.Order.ReduceOnly != nil && *req.Order.ReduceOnly
+
+	price := ""
+	tif := "Gtc"
+	switch strings.ToLower(strings.TrimSpace(req.Order.Type)) {
+	case "limit":
+		if req.Order.LimitPrice == nil || strings.TrimSpace(*req.Order.LimitPrice) == "" {
+			return buildUnsignedActionResponse{}, errors.New("limit orders require limitPrice")
 		}
+		price = strings.TrimSpace(*req.Order.LimitPrice)
+	case "market":
+		midPayload, midErr := a.postJSON(r.Context(), "/info", map[string]any{
+			"type": "allMids",
+		})
+		if midErr != nil {
+			return buildUnsignedActionResponse{}, midErr
+		}
+		midString := stringField(midPayload, coin)
+		if midString == "" {
+			return buildUnsignedActionResponse{}, fmt.Errorf("failed to resolve mark price for %s", coin)
+		}
+
+		mid, parseErr := strconv.ParseFloat(midString, 64)
+		if parseErr != nil {
+			return buildUnsignedActionResponse{}, fmt.Errorf("failed to parse mark price for %s", coin)
+		}
+		slippageMultiplier := 1.05
+		if !isBuy {
+			slippageMultiplier = 0.95
+		}
+		price = strconv.FormatFloat(mid*slippageMultiplier, 'f', 8, 64)
+		tif = "Ioc"
+	default:
+		return buildUnsignedActionResponse{}, errors.New("type must be market or limit")
 	}
 
-	orderID := stringField(payload, "orderId")
+	orderWire := map[string]any{
+		"a": asset,
+		"b": isBuy,
+		"p": price,
+		"s": strings.TrimSpace(req.Order.Size),
+		"r": reduceOnly,
+		"t": map[string]any{
+			"limit": map[string]any{
+				"tif": tif,
+			},
+		},
+	}
+	if clientOrderID := strings.TrimSpace(req.Order.ClientOrderID); clientOrderID != "" {
+		orderWire["c"] = clientOrderID
+	}
+
+	action := map[string]any{
+		"type": "order",
+		"orders": []any{
+			orderWire,
+		},
+		"grouping": "na",
+	}
+	unsignedExchangeRequest := map[string]any{
+		"action": action,
+		"nonce":  time.Now().UTC().UnixMilli(),
+	}
+	orderID := strings.TrimSpace(req.Order.ClientOrderID)
 	if orderID == "" {
 		orderID = fmt.Sprintf("ord_hl_%d", time.Now().UTC().UnixNano())
 	}
-	payloadID := stringField(payload, "id")
-	if payloadID == "" {
-		payloadID = fmt.Sprintf("uap_hl_%d", time.Now().UTC().UnixNano())
-	}
+	payloadID := fmt.Sprintf("uap_hl_%d", time.Now().UTC().UnixNano())
 
 	return buildUnsignedActionResponse{
 		OrderID:       orderID,
 		SigningPolicy: "client-signing-only",
 		Disclaimer:    clientSigningOnlyDisclaimer,
 		UnsignedActionPayload: unsignedActionPayload{
-			ID:        payloadID,
-			AccountID: req.Order.AccountID,
-			Venue:     req.Order.Venue,
-			Kind:      "perp_order_action",
-			Action:    action,
+			ID:            payloadID,
+			AccountID:     req.Order.AccountID,
+			Venue:         req.Order.Venue,
+			Kind:          "perp_order_action",
+			Action:        unsignedExchangeRequest,
+			WalletRequest: walletRequestPayload{Method: "wallet_perp_submitAction", Params: []any{unsignedExchangeRequest}},
 		},
 	}, nil
 }
@@ -262,21 +340,35 @@ func (a *asterMockAdapter) BuildUnsignedAction(
 	_ *http.Request,
 	req buildUnsignedActionRequest,
 ) (buildUnsignedActionResponse, error) {
+	actionPayloadID := fmt.Sprintf("uap_as_%d", time.Now().UTC().UnixNano())
+	action := map[string]any{
+		"instrument": req.Order.Instrument,
+		"side":       req.Order.Side,
+		"type":       req.Order.Type,
+		"size":       req.Order.Size,
+		"limitPrice": req.Order.LimitPrice,
+	}
+
 	return buildUnsignedActionResponse{
 		OrderID:       fmt.Sprintf("ord_as_%d", time.Now().UTC().UnixNano()),
 		SigningPolicy: "client-signing-only",
 		Disclaimer:    clientSigningOnlyDisclaimer,
 		UnsignedActionPayload: unsignedActionPayload{
-			ID:        fmt.Sprintf("uap_as_%d", time.Now().UTC().UnixNano()),
+			ID:        actionPayloadID,
 			AccountID: req.Order.AccountID,
 			Venue:     venueAster,
 			Kind:      "perp_order_action",
-			Action: map[string]any{
-				"instrument": req.Order.Instrument,
-				"side":       req.Order.Side,
-				"type":       req.Order.Type,
-				"size":       req.Order.Size,
-				"limitPrice": req.Order.LimitPrice,
+			Action:    action,
+			WalletRequest: walletRequestPayload{
+				Method: "wallet_perp_submitAction",
+				Params: []any{
+					map[string]any{
+						"accountId": req.Order.AccountID,
+						"payloadId": actionPayloadID,
+						"venue":     venueAster,
+						"action":    action,
+					},
+				},
 			},
 		},
 	}, nil
@@ -542,4 +634,33 @@ func firstNonEmptyString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func normalizePerpCoinFromInstrument(instrument string) string {
+	normalized := strings.ToUpper(strings.TrimSpace(instrument))
+	if normalized == "" {
+		return ""
+	}
+
+	return strings.TrimSuffix(normalized, "-PERP")
+}
+
+func resolvePerpAsset(metaPayload map[string]any, coin string) (int, error) {
+	rawUniverse, ok := metaPayload["universe"].([]any)
+	if !ok {
+		return -1, errors.New("hyperliquid meta response is missing universe")
+	}
+
+	for index, entry := range rawUniverse {
+		asset, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		if strings.EqualFold(stringField(asset, "name"), coin) {
+			return index, nil
+		}
+	}
+
+	return -1, fmt.Errorf("unsupported instrument %s for hyperliquid", coin)
 }
