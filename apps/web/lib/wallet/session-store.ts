@@ -21,12 +21,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function isWalletConnectorId(value: unknown): value is WalletConnectorId {
-  return typeof value === 'string' && WALLET_CONNECTOR_IDS.includes(value as WalletConnectorId);
+function normalizeWalletAddress(walletAddress: string): string {
+  return walletAddress.trim().toLowerCase();
 }
 
-function normalizeAddress(address: string): string {
-  return address.trim().toLowerCase();
+function normalizeWalletConnectorId(value: unknown): WalletConnectorId | null {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return null;
+  }
+
+  if (WALLET_CONNECTOR_IDS.includes(value as WalletConnectorId)) {
+    return value as WalletConnectorId;
+  }
+
+  if (value === 'metaMask') {
+    return 'injected';
+  }
+
+  if (value === 'coinbaseWallet') {
+    return 'coinbaseWalletSDK';
+  }
+
+  return null;
 }
 
 function createSlotId(): string {
@@ -38,19 +54,16 @@ function createSlotId(): string {
 }
 
 function sortSlotsByRecency(slots: WalletSlot[]): WalletSlot[] {
-  return [...slots].sort((left, right) =>
-    right.lastConnectedAt.localeCompare(left.lastConnectedAt),
-  );
+  return [...slots].sort((left, right) => right.lastConnectedAt.localeCompare(left.lastConnectedAt));
 }
 
 function normalizeState(state: WalletSessionState): WalletSessionState {
   const slots = sortSlotsByRecency(state.slots).slice(0, MAX_WALLET_SLOTS);
-  const hasActiveSlot =
-    state.activeSlotId !== null && slots.some((slot) => slot.id === state.activeSlotId);
+  const hasActiveSlot = state.activeSlotId !== null && slots.some((slot) => slot.id === state.activeSlotId);
 
   return {
     slots,
-    activeSlotId: hasActiveSlot ? state.activeSlotId : (slots[0]?.id ?? null),
+    activeSlotId: hasActiveSlot ? state.activeSlotId : slots[0]?.id ?? null,
   };
 }
 
@@ -74,13 +87,15 @@ function coerceWalletSlot(candidate: unknown): WalletSlot | null {
     return null;
   }
 
-  const { id, address, chainId, connectorId, label, lastConnectedAt, status } = candidate;
+  const { id, walletAddress, address, chainId, connectorId, label, lastConnectedAt, status } = candidate;
+  const candidateWalletAddress = typeof walletAddress === 'string' ? walletAddress : address;
+  const normalizedConnectorId = normalizeWalletConnectorId(connectorId);
 
   if (typeof id !== 'string' || id.length === 0) {
     return null;
   }
 
-  if (typeof address !== 'string' || address.trim().length === 0) {
+  if (typeof candidateWalletAddress !== 'string' || candidateWalletAddress.trim().length === 0) {
     return null;
   }
 
@@ -88,7 +103,7 @@ function coerceWalletSlot(candidate: unknown): WalletSlot | null {
     return null;
   }
 
-  if (!isWalletConnectorId(connectorId)) {
+  if (!normalizedConnectorId) {
     return null;
   }
 
@@ -102,9 +117,9 @@ function coerceWalletSlot(candidate: unknown): WalletSlot | null {
 
   return {
     id,
-    address: normalizeAddress(address),
+    walletAddress: normalizeWalletAddress(candidateWalletAddress),
     chainId,
-    connectorId,
+    connectorId: normalizedConnectorId,
     label: typeof label === 'string' && label.trim().length > 0 ? label.trim() : undefined,
     lastConnectedAt,
     status: status as WalletSlotStatus,
@@ -112,7 +127,7 @@ function coerceWalletSlot(candidate: unknown): WalletSlot | null {
 }
 
 export function walletAddressesMatch(left: string, right: string): boolean {
-  return normalizeAddress(left) === normalizeAddress(right);
+  return normalizeWalletAddress(left) === normalizeWalletAddress(right);
 }
 
 export function createEmptyWalletSessionState(): WalletSessionState {
@@ -162,30 +177,37 @@ export function upsertConnectedWallet(
   state: WalletSessionState,
   payload: ConnectedWalletPayload,
 ): WalletStateResult {
-  const trimmedAddress = payload.address.trim();
   const trimmedSlotId = payload.slotId?.trim();
+  const trimmedAddress = payload.walletAddress.trim();
+  const trimmedConnectorId = payload.connectorId.trim();
+  const normalizedConnectorId = normalizeWalletConnectorId(trimmedConnectorId);
 
-  if (trimmedAddress.length === 0 || !Number.isInteger(payload.chainId) || payload.chainId <= 0) {
+  if (
+    trimmedAddress.length === 0 ||
+    !normalizedConnectorId ||
+    !Number.isInteger(payload.chainId) ||
+    payload.chainId <= 0
+  ) {
     return buildResult(state, false, 'invalid-payload');
   }
 
-  const normalizedAddress = normalizeAddress(trimmedAddress);
+  const normalizedAddress = normalizeWalletAddress(trimmedAddress);
   const lastConnectedAt = payload.connectedAt ?? new Date().toISOString();
   const label = payload.label?.trim() || undefined;
   const existingSlot = trimmedSlotId
     ? state.slots.find((slot) => slot.id === trimmedSlotId)
     : state.slots.find(
         (slot) =>
-          walletAddressesMatch(slot.address, normalizedAddress) &&
-          slot.connectorId === payload.connectorId,
+          walletAddressesMatch(slot.walletAddress, normalizedAddress) &&
+          slot.connectorId === normalizedConnectorId,
       );
 
   if (existingSlot) {
     const updatedSlot: WalletSlot = {
       ...existingSlot,
-      address: normalizedAddress,
+      walletAddress: normalizedAddress,
       chainId: payload.chainId,
-      connectorId: payload.connectorId,
+      connectorId: normalizedConnectorId,
       label,
       lastConnectedAt,
       status: 'connected',
@@ -206,20 +228,15 @@ export function upsertConnectedWallet(
 
   const newSlot: WalletSlot = {
     id: trimmedSlotId?.length ? trimmedSlotId : createSlotId(),
-    address: normalizedAddress,
+    walletAddress: normalizedAddress,
     chainId: payload.chainId,
-    connectorId: payload.connectorId,
+    connectorId: normalizedConnectorId,
     label,
     lastConnectedAt,
     status: 'connected',
   };
 
-  return buildResult(
-    { slots: [newSlot, ...state.slots], activeSlotId: newSlot.id },
-    true,
-    'added',
-    newSlot.id,
-  );
+  return buildResult({ slots: [newSlot, ...state.slots], activeSlotId: newSlot.id }, true, 'added', newSlot.id);
 }
 
 export function setActiveWalletSlot(state: WalletSessionState, slotId: string): WalletStateResult {
@@ -273,14 +290,9 @@ export function removeWalletSlot(state: WalletSessionState, slotId: string): Wal
 
   const remainingSlots = state.slots.filter((slot) => slot.id !== slotId);
   const nextActiveSlotId =
-    state.activeSlotId === slotId ? (remainingSlots[0]?.id ?? null) : state.activeSlotId;
+    state.activeSlotId === slotId ? remainingSlots[0]?.id ?? null : state.activeSlotId;
 
-  return buildResult(
-    { slots: remainingSlots, activeSlotId: nextActiveSlotId },
-    true,
-    'removed',
-    slotId,
-  );
+  return buildResult({ slots: remainingSlots, activeSlotId: nextActiveSlotId }, true, 'removed', slotId);
 }
 
 export function clearWalletSessionSlots(): WalletStateResult {
@@ -311,18 +323,10 @@ export function markWalletSlotStatus(
       : slot,
   );
 
-  return buildResult(
-    { slots: updatedSlots, activeSlotId: state.activeSlotId },
-    true,
-    'status-updated',
-    slotId,
-  );
+  return buildResult({ slots: updatedSlots, activeSlotId: state.activeSlotId }, true, 'status-updated', slotId);
 }
 
-export function markAllWalletSlots(
-  state: WalletSessionState,
-  status: WalletSlotStatus,
-): WalletStateResult {
+export function markAllWalletSlots(state: WalletSessionState, status: WalletSlotStatus): WalletStateResult {
   const hasChanges = state.slots.some((slot) => slot.status !== status);
 
   if (!hasChanges) {

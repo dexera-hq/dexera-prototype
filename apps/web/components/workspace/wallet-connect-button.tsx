@@ -76,7 +76,7 @@ export function WalletConnectButton() {
       return 'No active wallet';
     }
 
-    return `${truncateAddress(activeSlot.address)} · ${getWalletChainLabel(activeSlot.chainId)}`;
+    return `${truncateAddress(activeSlot.walletAddress)} · ${getWalletChainLabel(activeSlot.chainId)}`;
   }, [activeSlot]);
 
   useEffect(() => {
@@ -193,7 +193,7 @@ export function WalletConnectButton() {
               slots.map((slot) => (
                 <div key={slot.id} className="wallet-slot-row">
                   <div className="wallet-slot-meta">
-                    <p className="wallet-slot-address">{truncateAddress(slot.address)}</p>
+                    <p className="wallet-slot-address">{truncateAddress(slot.walletAddress)}</p>
                     <p className="wallet-slot-chain">{getWalletChainLabel(slot.chainId)}</p>
                     <span className={`wallet-slot-status wallet-slot-status-${slot.status}`}>
                       {getStatusLabel(slot.status)}

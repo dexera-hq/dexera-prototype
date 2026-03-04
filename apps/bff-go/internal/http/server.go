@@ -141,6 +141,7 @@ func NewMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/api/v1/placeholder", placeholderHandler)
+	mux.HandleFunc("/api/v1/transactions/unsigned", buildUnsignedTransactionHandler)
 	mux.HandleFunc("/api/v1/quotes", quoteHandler)
 	mux.HandleFunc("/api/v1/transactions/build", buildTransactionHandler)
 	mux.HandleFunc("/api/v1/positions", positionsHandler)

@@ -147,7 +147,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
 
         const nextResult = upsertConnectedWallet(currentState, {
           slotId,
-          address: account.address,
+          walletAddress: account.address,
           chainId: account.chainId,
           connectorId: account.connectorId,
           label: account.connectorLabel,
@@ -226,7 +226,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
 
         const upsertResult = upsertConnectedWallet(nextState, {
           slotId: slot.id,
-          address: reconnectResult.account.address,
+          walletAddress: reconnectResult.account.address,
           chainId: reconnectResult.account.chainId,
           connectorId: reconnectResult.account.connectorId,
           label: reconnectResult.account.connectorLabel,
@@ -311,7 +311,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
 
         const nextResult = upsertConnectedWallet(stateRef.current, {
           slotId,
-          address: connectResult.account.address,
+          walletAddress: connectResult.account.address,
           chainId: connectResult.account.chainId,
           connectorId: connectResult.account.connectorId,
           label: connectResult.account.connectorLabel,
@@ -388,7 +388,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
 
       const nextResult = upsertConnectedWallet(stateRef.current, {
         slotId,
-        address: reconnectResult.account.address,
+        walletAddress: reconnectResult.account.address,
         chainId: reconnectResult.account.chainId,
         connectorId: reconnectResult.account.connectorId,
         label: reconnectResult.account.connectorLabel,

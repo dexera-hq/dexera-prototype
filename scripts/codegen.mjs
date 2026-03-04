@@ -117,6 +117,21 @@ export interface BffBuildTransactionRequest {
   chainId: number;
 }
 
+export interface BffOrderRequest {
+  walletAddress: string;
+  chainId: number;
+  symbol: string;
+  side: 'buy' | 'sell';
+  type: 'market' | 'limit';
+  quantity: string;
+  clientOrderId?: string;
+  limitPrice?: string;
+}
+
+export interface BffBuildUnsignedTransactionRequest {
+  order: BffOrderRequest;
+}
+
 export interface BffUnsignedTransaction {
   to: string;
   data: string;
@@ -127,6 +142,20 @@ export interface BffUnsignedTransaction {
   chainId: number;
 }
 
+export interface BffUnsignedTxPayload {
+  id: string;
+  walletAddress: string;
+  chainId: number;
+  kind: 'evm_transaction';
+  to: string;
+  data: string;
+  value: string;
+  gasLimit?: string;
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
+  nonce?: number;
+}
+
 export interface BffBuildTransactionResponse {
   buildId: string;
   quoteId: string;
@@ -135,6 +164,13 @@ export interface BffBuildTransactionResponse {
   warnings: string[];
   simulated: boolean;
   source: string;
+}
+
+export interface BffBuildUnsignedTransactionResponse {
+  orderId: string;
+  signingPolicy: 'client-signing-only';
+  disclaimer: string;
+  unsignedTxPayload: BffUnsignedTxPayload;
 }
 
 export interface BffPosition {
@@ -257,6 +293,21 @@ export interface BffBuildTransactionRequest {
   chainId: number;
 }
 
+export interface BffOrderRequest {
+  walletAddress: string;
+  chainId: number;
+  symbol: string;
+  side: 'buy' | 'sell';
+  type: 'market' | 'limit';
+  quantity: string;
+  clientOrderId?: string;
+  limitPrice?: string;
+}
+
+export interface BffBuildUnsignedTransactionRequest {
+  order: BffOrderRequest;
+}
+
 export interface BffUnsignedTransaction {
   to: string;
   data: string;
@@ -267,6 +318,20 @@ export interface BffUnsignedTransaction {
   chainId: number;
 }
 
+export interface BffUnsignedTxPayload {
+  id: string;
+  walletAddress: string;
+  chainId: number;
+  kind: 'evm_transaction';
+  to: string;
+  data: string;
+  value: string;
+  gasLimit?: string;
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
+  nonce?: number;
+}
+
 export interface BffBuildTransactionResponse {
   buildId: string;
   quoteId: string;
@@ -275,6 +340,13 @@ export interface BffBuildTransactionResponse {
   warnings: string[];
   simulated: boolean;
   source: string;
+}
+
+export interface BffBuildUnsignedTransactionResponse {
+  orderId: string;
+  signingPolicy: 'client-signing-only';
+  disclaimer: string;
+  unsignedTxPayload: BffUnsignedTxPayload;
 }
 
 export interface BffPosition {

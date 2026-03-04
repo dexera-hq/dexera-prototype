@@ -1,7 +1,9 @@
-import { connect, disconnect, getAccount, watchAccount } from '@wagmi/core';
 import { createConfig, createStorage, http } from 'wagmi';
+import { connect, disconnect, getAccount, watchAccount } from 'wagmi/actions';
+import { getWalletClient } from '@wagmi/core/actions';
 import { mainnet } from 'wagmi/chains';
 import { coinbaseWallet, injected, walletConnect } from 'wagmi/connectors';
+import type { UnsignedTxPayload } from '@dexera/shared-types';
 
 import { HYPER_EVM_RPC_URL, hyperEvmChain, walletChains } from './chains';
 import { WALLET_CONNECTOR_IDS, type ConnectWalletReason, type WalletConnectorId } from './types';
@@ -210,5 +212,50 @@ export async function clearRuntimeSlots(slotIds: readonly string[]): Promise<voi
     const runtime = slotRuntimeById.get(slotId);
     runtime?.unwatchAccount?.();
     slotRuntimeById.delete(slotId);
+  }
+}
+
+export async function sendRuntimeSlotTransaction(parameters: {
+  slotId: string;
+  walletAddress: string;
+  payload: UnsignedTxPayload;
+}): Promise<string> {
+  const runtime = getOrCreateSlotRuntime(parameters.slotId);
+  try {
+    const walletClient = await getWalletClient(runtime.config, {
+      account: parameters.walletAddress as `0x${string}`,
+      chainId: parameters.payload.chainId,
+    });
+
+    return await walletClient.sendTransaction({
+      account: parameters.walletAddress as `0x${string}`,
+      chain: walletClient.chain,
+      to: parameters.payload.to as `0x${string}`,
+      data: parameters.payload.data as `0x${string}`,
+      value: BigInt(parameters.payload.value),
+      gas: parameters.payload.gasLimit ? BigInt(parameters.payload.gasLimit) : undefined,
+      maxFeePerGas: parameters.payload.maxFeePerGas
+        ? BigInt(parameters.payload.maxFeePerGas)
+        : undefined,
+      maxPriorityFeePerGas: parameters.payload.maxPriorityFeePerGas
+        ? BigInt(parameters.payload.maxPriorityFeePerGas)
+        : undefined,
+      nonce: parameters.payload.nonce,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown wallet signing error.';
+    const normalizedMessage = message.toLowerCase();
+
+    if (normalizedMessage.includes('eth_signtransaction')) {
+      throw new Error(
+        'The connected wallet does not support this transaction request format. Adjust the request or use a compatible wallet.',
+      );
+    }
+
+    if (normalizedMessage.includes('user rejected') || normalizedMessage.includes('rejected')) {
+      throw new Error('The wallet request was rejected before submission.');
+    }
+
+    throw new Error(`Wallet submission failed: ${message}`);
   }
 }

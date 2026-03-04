@@ -16,6 +16,9 @@ export function TradingWorkspace() {
     removeModule,
     resetLayout,
     handleDragStart,
+    handlePointerDownOnModule,
+    handlePointerEnterModule,
+    handlePointerUpOnModule,
     handleDragOverModule,
     handleDropOnModule,
     handleDropOnCanvas,
@@ -43,6 +46,9 @@ export function TradingWorkspace() {
               dropTargetId={dropTargetId}
               onRemove={removeModule}
               onDragStart={handleDragStart}
+              onPointerDownOnModule={handlePointerDownOnModule}
+              onPointerEnterModule={handlePointerEnterModule}
+              onPointerUpOnModule={handlePointerUpOnModule}
               onDragOverModule={handleDragOverModule}
               onDropOnModule={handleDropOnModule}
               onDragEnd={clearDragState}

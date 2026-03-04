@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import type { DragEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { DragEvent, PointerEvent } from 'react';
 import {
   deserializeWorkspaceLayout,
   serializeWorkspaceLayout,
@@ -134,6 +134,8 @@ export function useWorkspaceModules() {
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [dropTargetId, setDropTargetId] = useState<number | null>(null);
   const [hasLoadedPersistedLayout, setHasLoadedPersistedLayout] = useState(false);
+  const dragSourceIdRef = useRef<number | null>(null);
+  const dropTargetIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     const storedLayout = loadPersistedLayout();
@@ -171,19 +173,54 @@ export function useWorkspaceModules() {
   const resetLayout = () => {
     setModules(initialModules);
     setNextModuleId(getNextModuleId(initialModules));
+    dragSourceIdRef.current = null;
+    dropTargetIdRef.current = null;
     setDraggingId(null);
     setDropTargetId(null);
   };
 
   const handleDragStart = (id: number, event: DragEvent<HTMLElement>) => {
+    dragSourceIdRef.current = id;
     event.dataTransfer.setData('text/plain', String(id));
     event.dataTransfer.effectAllowed = 'move';
     setDraggingId(id);
   };
 
+  const handlePointerDownOnModule = (id: number, event: PointerEvent<HTMLElement>) => {
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest('button') !== null) {
+      return;
+    }
+
+    dragSourceIdRef.current = id;
+    setDraggingId(id);
+  };
+
+  const handlePointerEnterModule = (targetId: number) => {
+    if (dragSourceIdRef.current === null || targetId === dragSourceIdRef.current) {
+      return;
+    }
+
+    dropTargetIdRef.current = targetId;
+    setDropTargetId(targetId);
+  };
+
+  const handlePointerUpOnModule = (targetId: number) => {
+    const sourceId = dragSourceIdRef.current;
+    if (sourceId !== null && sourceId !== targetId) {
+      setModules((currentModules) => moveModule(currentModules, sourceId, targetId));
+    }
+
+    dragSourceIdRef.current = null;
+    dropTargetIdRef.current = null;
+    setDraggingId(null);
+    setDropTargetId(null);
+  };
+
   const handleDragOverModule = (targetId: number, event: DragEvent<HTMLElement>) => {
     event.preventDefault();
-    if (targetId !== draggingId) {
+    if (targetId !== dragSourceIdRef.current) {
+      dropTargetIdRef.current = targetId;
       setDropTargetId(targetId);
     }
   };
@@ -191,31 +228,41 @@ export function useWorkspaceModules() {
   const handleDropOnModule = (targetId: number, event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    const sourceId = draggingId ?? Number(event.dataTransfer.getData('text/plain'));
+    const sourceId = dragSourceIdRef.current ?? Number(event.dataTransfer.getData('text/plain'));
     if (!Number.isFinite(sourceId)) {
+      dragSourceIdRef.current = null;
+      dropTargetIdRef.current = null;
       setDraggingId(null);
       setDropTargetId(null);
       return;
     }
     setModules((currentModules) => moveModule(currentModules, sourceId, targetId));
+    dragSourceIdRef.current = null;
+    dropTargetIdRef.current = null;
     setDraggingId(null);
     setDropTargetId(null);
   };
 
   const handleDropOnCanvas = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
-    const sourceId = draggingId ?? Number(event.dataTransfer.getData('text/plain'));
+    const sourceId = dragSourceIdRef.current ?? Number(event.dataTransfer.getData('text/plain'));
     if (!Number.isFinite(sourceId)) {
+      dragSourceIdRef.current = null;
+      dropTargetIdRef.current = null;
       setDraggingId(null);
       setDropTargetId(null);
       return;
     }
     setModules((currentModules) => pushModuleToEnd(currentModules, sourceId));
+    dragSourceIdRef.current = null;
+    dropTargetIdRef.current = null;
     setDraggingId(null);
     setDropTargetId(null);
   };
 
   const clearDragState = () => {
+    dragSourceIdRef.current = null;
+    dropTargetIdRef.current = null;
     setDraggingId(null);
     setDropTargetId(null);
   };
@@ -228,6 +275,9 @@ export function useWorkspaceModules() {
     removeModule,
     resetLayout,
     handleDragStart,
+    handlePointerDownOnModule,
+    handlePointerEnterModule,
+    handlePointerUpOnModule,
     handleDragOverModule,
     handleDropOnModule,
     handleDropOnCanvas,

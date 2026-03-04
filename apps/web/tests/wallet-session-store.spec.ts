@@ -19,7 +19,7 @@ describe('wallet session store', () => {
     let state = createEmptyWalletSessionState();
 
     const first = upsertConnectedWallet(state, {
-      address: '0x1111',
+      walletAddress: '0x1111',
       chainId: 1,
       connectorId: 'injected',
       label: 'Injected',
@@ -30,7 +30,7 @@ describe('wallet session store', () => {
     state = first.state;
 
     const second = upsertConnectedWallet(state, {
-      address: '0x2222',
+      walletAddress: '0x2222',
       chainId: 1,
       connectorId: 'coinbaseWalletSDK',
       label: 'Coinbase Wallet',
@@ -41,7 +41,7 @@ describe('wallet session store', () => {
     state = second.state;
 
     const third = upsertConnectedWallet(state, {
-      address: '0x3333',
+      walletAddress: '0x3333',
       chainId: 999,
       connectorId: 'walletConnect',
       label: 'WalletConnect',
@@ -52,7 +52,7 @@ describe('wallet session store', () => {
     state = third.state;
 
     const fourth = upsertConnectedWallet(state, {
-      address: '0x4444',
+      walletAddress: '0x4444',
       chainId: 1,
       connectorId: 'injected',
       label: 'Injected',
@@ -67,7 +67,7 @@ describe('wallet session store', () => {
   it('updates an existing slot by slot id without creating duplicates', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
       slotId: 'slot-1',
-      address: '0xAAAA',
+      walletAddress: '0xAAAA',
       chainId: 1,
       connectorId: 'injected',
       connectedAt: '2026-03-02T10:00:00.000Z',
@@ -75,7 +75,7 @@ describe('wallet session store', () => {
 
     const updated = upsertConnectedWallet(first.state, {
       slotId: 'slot-1',
-      address: '0xBBBB',
+      walletAddress: '0xBBBB',
       chainId: 999,
       connectorId: 'injected',
       label: 'Injected',
@@ -90,7 +90,7 @@ describe('wallet session store', () => {
       throw new Error('Expected the updated wallet slot to exist');
     }
     expect(updatedSlot.id).toBe('slot-1');
-    expect(updatedSlot.address).toBe('0xbbbb');
+    expect(updatedSlot.walletAddress).toBe('0xbbbb');
     expect(updatedSlot.chainId).toBe(999);
     expect(updatedSlot.label).toBe('Injected');
     expect(updated.state.activeSlotId).toBe(updatedSlot.id);
@@ -99,7 +99,7 @@ describe('wallet session store', () => {
   it('adds a new slot when a provided slot id does not exist, even if connector and address match', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
       slotId: 'slot-1',
-      address: '0xAAAA',
+      walletAddress: '0xAAAA',
       chainId: 1,
       connectorId: 'injected',
       connectedAt: '2026-03-02T10:00:00.000Z',
@@ -107,7 +107,7 @@ describe('wallet session store', () => {
 
     const second = upsertConnectedWallet(first.state, {
       slotId: 'slot-2',
-      address: '0xAAAA',
+      walletAddress: '0xAAAA',
       chainId: 1,
       connectorId: 'injected',
       connectedAt: '2026-03-02T10:30:00.000Z',
@@ -123,7 +123,7 @@ describe('wallet session store', () => {
   it('marks a slot disconnected without removing it', () => {
     const connected = upsertConnectedWallet(createEmptyWalletSessionState(), {
       slotId: 'slot-1',
-      address: '0x1111',
+      walletAddress: '0x1111',
       chainId: 1,
       connectorId: 'injected',
       connectedAt: '2026-03-02T10:00:00.000Z',
@@ -138,19 +138,19 @@ describe('wallet session store', () => {
 
   it('removes the active slot and promotes the next most recent slot', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
-      address: '0x1111',
+      walletAddress: '0x1111',
       chainId: 1,
       connectorId: 'injected',
       connectedAt: '2026-03-02T10:00:00.000Z',
     });
     const second = upsertConnectedWallet(first.state, {
-      address: '0x2222',
+      walletAddress: '0x2222',
       chainId: 1,
       connectorId: 'coinbaseWalletSDK',
       connectedAt: '2026-03-02T10:10:00.000Z',
     });
     const third = upsertConnectedWallet(second.state, {
-      address: '0x3333',
+      walletAddress: '0x3333',
       chainId: 999,
       connectorId: 'walletConnect',
       connectedAt: '2026-03-02T10:20:00.000Z',
@@ -166,12 +166,12 @@ describe('wallet session store', () => {
       throw new Error('Expected the next active wallet slot to exist');
     }
     expect(removed.state.activeSlotId).toBe(nextActiveSlot.id);
-    expect(nextActiveSlot.address).toBe('0x2222');
+    expect(nextActiveSlot.walletAddress).toBe('0x2222');
   });
 
   it('serializes, restores, and safely ignores malformed persisted state', () => {
     const connected = upsertConnectedWallet(createEmptyWalletSessionState(), {
-      address: '0x5555',
+      walletAddress: '0x5555',
       chainId: 999,
       connectorId: 'walletConnect',
       connectedAt: '2026-03-02T11:00:00.000Z',
@@ -200,17 +200,34 @@ describe('wallet session store', () => {
 
     expect(storage.getItem(WALLET_SESSION_STORAGE_KEY)).not.toBeNull();
     expect(readWalletSessionState(storage)).toEqual(connected.state);
+    expect(
+      deserializeWalletSessionState(
+        JSON.stringify({
+          slots: [
+            {
+              id: 'legacy-slot',
+              address: '0xAAAA',
+              chainId: 1,
+              connectorId: 'metaMask',
+              lastConnectedAt: '2026-03-02T11:05:00.000Z',
+              status: 'connected',
+            },
+          ],
+          activeSlotId: 'legacy-slot',
+        }),
+      ).slots[0]?.walletAddress,
+    ).toBe('0xaaaa');
   });
 
   it('marks all rehydrated slots as stale when no live session is restored', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
-      address: '0x1111',
+      walletAddress: '0x1111',
       chainId: 1,
       connectorId: 'injected',
       connectedAt: '2026-03-02T10:00:00.000Z',
     });
     const second = upsertConnectedWallet(first.state, {
-      address: '0x2222',
+      walletAddress: '0x2222',
       chainId: 999,
       connectorId: 'walletConnect',
       connectedAt: '2026-03-02T10:05:00.000Z',
