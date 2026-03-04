@@ -99,10 +99,7 @@ function notifyAccountChange(slotRuntime: SlotRuntime): void {
   }
 }
 
-function sameRuntimeAccount(
-  left: RuntimeAccountSnapshot,
-  right: RuntimeAccountSnapshot,
-): boolean {
+function sameRuntimeAccount(left: RuntimeAccountSnapshot, right: RuntimeAccountSnapshot): boolean {
   return (
     left.isConnected === right.isConnected &&
     left.accountId === right.accountId &&
@@ -438,7 +435,10 @@ async function syncRuntimeAccountFromProvider(
   }
 }
 
-function watchProviderLifecycle(slotRuntime: SlotRuntime, provider: BrowserWalletProvider): () => void {
+function watchProviderLifecycle(
+  slotRuntime: SlotRuntime,
+  provider: BrowserWalletProvider,
+): () => void {
   const handleAccountsChanged: ProviderEventHandler = (accounts: unknown) => {
     if (slotRuntime.provider !== provider) {
       return;

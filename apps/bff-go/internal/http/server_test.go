@@ -552,6 +552,108 @@ func TestHyperliquidAdapterRejectsUnknownNetworkToggle(t *testing.T) {
 	}
 }
 
+func TestHyperliquidEligibilityRejectsMissingUserRole(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST request, got %s", r.Method)
+		}
+		if r.URL.Path != "/info" {
+			t.Fatalf("expected path /info, got %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("expected JSON body, got err=%v", err)
+		}
+		if body["type"] != "userRole" {
+			t.Fatalf("expected payload type=userRole, got %v", body["type"])
+		}
+		if body["user"] != "0x0000000000000000000000000000000000000002" {
+			t.Fatalf("expected payload user address, got %v", body["user"])
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"role": "Missing"})
+	}))
+	defer upstream.Close()
+
+	t.Setenv("HYPERLIQUID_API_BASE_URL", upstream.URL)
+	t.Setenv("HYPERLIQUID_NETWORK", "")
+
+	adapter, err := newHyperliquidAdapterFromEnv()
+	if err != nil {
+		t.Fatalf("expected adapter creation to succeed, got err=%v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/wallet/verify", nil)
+	result, err := adapter.CheckWalletEligibility(
+		req,
+		"0x0000000000000000000000000000000000000002",
+	)
+	if err != nil {
+		t.Fatalf("expected successful userRole lookup, got err=%v", err)
+	}
+	if result.Eligible {
+		t.Fatalf("expected eligible=false when userRole is Missing")
+	}
+	if !strings.Contains(result.Reason, "not registered") {
+		t.Fatalf("expected not-registered reason, got %q", result.Reason)
+	}
+}
+
+func TestHyperliquidEligibilityChecksClearinghouseStateAfterUserRole(t *testing.T) {
+	requestCount := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST request, got %s", r.Method)
+		}
+		if r.URL.Path != "/info" {
+			t.Fatalf("expected path /info, got %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("expected JSON body, got err=%v", err)
+		}
+
+		switch requestCount {
+		case 1:
+			if body["type"] != "userRole" {
+				t.Fatalf("expected first request type=userRole, got %v", body["type"])
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"role": "User"})
+		case 2:
+			if body["type"] != "clearinghouseState" {
+				t.Fatalf("expected second request type=clearinghouseState, got %v", body["type"])
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"assetPositions": []any{}})
+		default:
+			t.Fatalf("unexpected extra request #%d", requestCount)
+		}
+	}))
+	defer upstream.Close()
+
+	t.Setenv("HYPERLIQUID_API_BASE_URL", upstream.URL)
+	t.Setenv("HYPERLIQUID_NETWORK", "")
+
+	adapter, err := newHyperliquidAdapterFromEnv()
+	if err != nil {
+		t.Fatalf("expected adapter creation to succeed, got err=%v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/wallet/verify", nil)
+	result, err := adapter.CheckWalletEligibility(
+		req,
+		"0x0000000000000000000000000000000000000002",
+	)
+	if err != nil {
+		t.Fatalf("expected eligibility check to succeed, got err=%v", err)
+	}
+	if !result.Eligible {
+		t.Fatalf("expected eligible=true for user role with valid clearinghouse response, got reason=%q", result.Reason)
+	}
+	if requestCount != 2 {
+		t.Fatalf("expected exactly 2 upstream calls, got %d", requestCount)
+	}
+}
+
 func TestHyperliquidPositionsPassesThroughClientErrors(t *testing.T) {
 	previousResolver := venueAdapterResolver
 	venueAdapterResolver = func(venue venueID) (perpVenueAdapter, error) {
