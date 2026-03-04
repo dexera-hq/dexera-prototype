@@ -346,6 +346,7 @@ components:
         - venue
         - kind
         - action
+        - walletRequest
       properties:
         id:
           type: string
@@ -359,6 +360,17 @@ components:
         action:
           type: object
           additionalProperties: true
+        walletRequest:
+          type: object
+          additionalProperties: false
+          required:
+            - method
+          properties:
+            method:
+              type: string
+            params:
+              type: array
+              items: {}
     BuildUnsignedActionResponse:
       type: object
       additionalProperties: false

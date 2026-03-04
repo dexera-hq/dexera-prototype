@@ -23,12 +23,18 @@ export interface PerpOrderRequest extends Wallet {
   clientOrderId?: string;
 }
 
+export interface WalletRequestEnvelope {
+  method: string;
+  params?: unknown[];
+}
+
 export interface UnsignedActionPayload {
   id: string;
   accountId: string;
   venue: Wallet['venue'];
   kind: UnsignedActionKind;
   action: Record<string, unknown>;
+  walletRequest: WalletRequestEnvelope;
 }
 
 export type TransactionSigningPolicy = 'client-signing-only';

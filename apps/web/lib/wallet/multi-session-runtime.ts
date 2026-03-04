@@ -662,6 +662,44 @@ export async function signRuntimeSlotMessage(parameters: {
   return normalizeSignature(ethSign);
 }
 
+async function requestActionSubmission(
+  provider: BrowserWalletProvider,
+  method: string,
+  params: readonly unknown[] | undefined,
+): Promise<unknown> {
+  if (params) {
+    return provider.request({ method, params });
+  }
+
+  return provider.request({ method });
+}
+
+function extractActionHash(submissionResult: unknown): string | null {
+  if (typeof submissionResult === 'string') {
+    const trimmed = submissionResult.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (!submissionResult || typeof submissionResult !== 'object') {
+    return null;
+  }
+
+  const submissionRecord = submissionResult as Record<string, unknown>;
+  for (const key of ['actionHash', 'hash', 'txHash'] as const) {
+    const candidate = submissionRecord[key];
+    if (typeof candidate !== 'string') {
+      continue;
+    }
+
+    const trimmed = candidate.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+
+  return null;
+}
+
 export async function disconnectRuntimeSlot(slotId: string): Promise<void> {
   const runtime = slotRuntimeById.get(slotId);
 
@@ -744,6 +782,21 @@ export async function signAndSubmitRuntimeSlotAction(parameters: {
   if (parameters.payload.kind !== 'perp_order_action') {
     throw new Error('Unsupported unsigned action kind.');
   }
+  if (!runtime.provider) {
+    throw new Error('No EIP-1193 provider is attached to this wallet slot.');
+  }
 
-  return `action_${Date.now().toString(36)}_${parameters.slotId.slice(0, 6)}`;
+  const walletRequest = parameters.payload.walletRequest;
+  const method = walletRequest.method.trim();
+  if (method.length === 0) {
+    throw new Error('Unsigned action payload wallet request method is required.');
+  }
+
+  const response = await requestActionSubmission(runtime.provider, method, walletRequest.params);
+  const actionHash = extractActionHash(response);
+  if (!actionHash) {
+    throw new Error('Wallet submission did not return an action hash.');
+  }
+
+  return actionHash;
 }

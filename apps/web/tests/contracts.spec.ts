@@ -55,6 +55,10 @@ describe('generated api contracts', () => {
           size: '0.25',
           limitPrice: '68400.00',
         },
+        walletRequest: {
+          method: 'wallet_perp_submitAction',
+          params: [{ payloadId: 'uap_1' }],
+        },
       },
     };
 

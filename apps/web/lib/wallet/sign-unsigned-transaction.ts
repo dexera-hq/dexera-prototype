@@ -16,6 +16,7 @@ export interface ClientActionSubmitter {
 }
 
 export async function submitUnsignedAction(parameters: {
+  orderId: string;
   payload: unknown;
   activeWallet: WalletSlot | null;
   submitter: ClientActionSubmitter;
@@ -27,6 +28,13 @@ export async function submitUnsignedAction(parameters: {
 
   if (!activeWallet) {
     throw new TransactionGuardrailError('missing-wallet', 'Connect a wallet before signing.');
+  }
+  const orderId = parameters.orderId.trim();
+  if (orderId.length === 0) {
+    throw new TransactionGuardrailError(
+      'invalid-payload',
+      'Unsigned action response is missing orderId.',
+    );
   }
 
   const actionHash = await parameters.submitter.sendAction({
@@ -42,6 +50,7 @@ export async function submitUnsignedAction(parameters: {
   }
 
   return {
+    orderId,
     actionHash,
     unsignedActionPayloadId: parameters.payload.id,
     accountId: activeWallet.accountId,

@@ -27,6 +27,7 @@ import {
   SIGNING_ONLY_DISCLAIMER_LINES,
   TransactionGuardrailError,
 } from '@/lib/wallet/transaction-guardrails';
+import type { ActionSubmissionResult } from '@/lib/wallet/types';
 import { isWalletSlotTradable } from '@/lib/wallet/types';
 import { useWalletManager } from '@/lib/wallet/wallet-manager-context';
 
@@ -35,6 +36,10 @@ type OrderEntryExecutionState =
   | { status: 'pending'; message: string }
   | { status: 'success'; message: string }
   | { status: 'error'; message: string };
+
+type OrderEntrySubmissionReceipt = ActionSubmissionResult & {
+  submittedAt: string;
+};
 
 function truncateAccountId(accountId: string): string {
   if (accountId.length <= 14) {
@@ -78,7 +83,12 @@ function getWalletBlockingMessage(parameters: {
   return null;
 }
 
-export function OrderEntryPanel({ marketData }: { marketData: WorkspaceMarketDataState }) {
+type OrderEntryPanelProps = {
+  marketData: WorkspaceMarketDataState;
+  onActionSubmitted?: (receipt: OrderEntrySubmissionReceipt) => void;
+};
+
+export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPanelProps) {
   const { activeSlot } = useWalletManager();
   const canTradeWithActiveWallet = isWalletSlotTradable(activeSlot);
   const [draft, setDraft] = useState<OrderEntryDraft>(() =>
@@ -93,6 +103,9 @@ export function OrderEntryPanel({ marketData }: { marketData: WorkspaceMarketDat
     status: 'idle',
     message: 'Preview an unsigned payload before wallet submission.',
   });
+  const [latestSubmission, setLatestSubmission] = useState<OrderEntrySubmissionReceipt | null>(
+    null,
+  );
   const lastSyncedLimitInstrumentRef = useRef<string>(draft.instrument);
 
   const venueInstruments = useMemo(
@@ -269,6 +282,7 @@ export function OrderEntryPanel({ marketData }: { marketData: WorkspaceMarketDat
 
     try {
       const submission = await submitUnsignedAction({
+        orderId: previewResponse.orderId,
         payload: previewResponse.unsignedActionPayload,
         activeWallet: activeSlot,
         submitter: {
@@ -280,10 +294,16 @@ export function OrderEntryPanel({ marketData }: { marketData: WorkspaceMarketDat
             }),
         },
       });
+      const receipt: OrderEntrySubmissionReceipt = {
+        ...submission,
+        submittedAt: new Date().toISOString(),
+      };
+      setLatestSubmission(receipt);
+      onActionSubmitted?.(receipt);
 
       setExecutionState({
         status: 'success',
-        message: `Wallet submitted action ${submission.actionHash} for ${submission.accountId} on ${submission.venue}.`,
+        message: `Submitted order ${submission.orderId} with action hash ${submission.actionHash}.`,
       });
     } catch (error) {
       const message =
@@ -500,6 +520,11 @@ export function OrderEntryPanel({ marketData }: { marketData: WorkspaceMarketDat
           {executionState.status === 'success' ? 'Ready' : 'Order Entry Status'}
         </p>
         <p className="order-entry-state-message">{executionState.message}</p>
+        {latestSubmission ? (
+          <p className="order-entry-state-message">
+            Last submission: order {latestSubmission.orderId} / hash {latestSubmission.actionHash}.
+          </p>
+        ) : null}
         {previewBlockingMessage ? (
           <p className="order-entry-blocking-message">{previewBlockingMessage}</p>
         ) : null}

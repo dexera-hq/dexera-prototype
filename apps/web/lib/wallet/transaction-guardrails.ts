@@ -76,6 +76,39 @@ export function validateUnsignedActionPayload(
     };
   }
 
+  if (!isRecord(payload.walletRequest)) {
+    return {
+      ok: false,
+      error: new TransactionGuardrailError(
+        'invalid-payload',
+        'Unsigned action payload must include a walletRequest object.',
+      ),
+    };
+  }
+
+  if (!hasNonEmptyString(payload.walletRequest, 'method')) {
+    return {
+      ok: false,
+      error: new TransactionGuardrailError(
+        'invalid-payload',
+        'Unsigned action payload walletRequest.method is required.',
+      ),
+    };
+  }
+
+  if (
+    'params' in payload.walletRequest &&
+    !Array.isArray((payload.walletRequest as Record<string, unknown>).params)
+  ) {
+    return {
+      ok: false,
+      error: new TransactionGuardrailError(
+        'invalid-payload',
+        'Unsigned action payload walletRequest.params must be an array when provided.',
+      ),
+    };
+  }
+
   if (payload.kind !== 'perp_order_action') {
     return {
       ok: false,

@@ -55,6 +55,7 @@ export interface WalletConnectorOption {
 }
 
 export interface ActionSubmissionResult {
+  orderId: string;
   actionHash: string;
   unsignedActionPayloadId: string;
   accountId: string;

@@ -115,6 +115,12 @@ export interface BffUnsignedActionPayload {
   venue: BffVenueId;
   kind: 'perp_order_action';
   action: Record<string, unknown>;
+  walletRequest: BffWalletRequestEnvelope;
+}
+
+export interface BffWalletRequestEnvelope {
+  method: string;
+  params?: unknown[];
 }
 
 export interface BffBuildUnsignedActionResponse {
@@ -242,6 +248,12 @@ export interface BffUnsignedActionPayload {
   venue: BffVenueId;
   kind: 'perp_order_action';
   action: Record<string, unknown>;
+  walletRequest: BffWalletRequestEnvelope;
+}
+
+export interface BffWalletRequestEnvelope {
+  method: string;
+  params?: unknown[];
 }
 
 export interface BffBuildUnsignedActionResponse {

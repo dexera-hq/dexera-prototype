@@ -4,11 +4,22 @@ import {
   clearRuntimeSlots,
   connectRuntimeSlot,
   reconnectRuntimeSlot,
+  signAndSubmitRuntimeSlotAction,
   signRuntimeSlotMessage,
   watchRuntimeSlotAccount,
 } from '../lib/wallet/multi-session-runtime';
 
-const RUNTIME_TEST_SLOT_IDS = ['slot-a', 'slot-b', 'slot-c', 'slot-d', 'slot-e', 'slot-f'] as const;
+const RUNTIME_TEST_SLOT_IDS = [
+  'slot-a',
+  'slot-b',
+  'slot-c',
+  'slot-d',
+  'slot-e',
+  'slot-f',
+  'slot-g',
+  'slot-h',
+  'slot-i',
+] as const;
 const runtimeGlobal = globalThis as unknown as { window?: unknown };
 const originalWindow = runtimeGlobal.window;
 
@@ -240,6 +251,139 @@ describe('multi-session runtime wallet connections', () => {
       method: 'personal_sign',
       params: ['Sign me', '0xabc123'],
     });
+  });
+
+  it('submits runtime slot actions through the wallet request envelope', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'wallet_perp_submitAction') {
+        return '0xactionhash';
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    const actionHash = await signAndSubmitRuntimeSlotAction({
+      slotId: 'slot-g',
+      accountId: '0xabc123',
+      payload: {
+        id: 'uap_1',
+        accountId: '0xabc123',
+        venue: 'hyperliquid',
+        kind: 'perp_order_action',
+        action: {
+          instrument: 'BTC-PERP',
+        },
+        walletRequest: {
+          method: 'wallet_perp_submitAction',
+          params: [{ payloadId: 'uap_1' }],
+        },
+      },
+    });
+
+    expect(actionHash).toBe('0xactionhash');
+    expect(request).toHaveBeenCalledWith({
+      method: 'wallet_perp_submitAction',
+      params: [{ payloadId: 'uap_1' }],
+    });
+  });
+
+  it('extracts action hash from object wallet responses', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'wallet_perp_submitAction') {
+        return { txHash: '0xobjecthash' };
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-h', 'metaMaskInjected');
+
+    const actionHash = await signAndSubmitRuntimeSlotAction({
+      slotId: 'slot-h',
+      accountId: '0xabc123',
+      payload: {
+        id: 'uap_2',
+        accountId: '0xabc123',
+        venue: 'hyperliquid',
+        kind: 'perp_order_action',
+        action: {
+          instrument: 'ETH-PERP',
+        },
+        walletRequest: {
+          method: 'wallet_perp_submitAction',
+          params: [{ payloadId: 'uap_2' }],
+        },
+      },
+    });
+
+    expect(actionHash).toBe('0xobjecthash');
+  });
+
+  it('fails when wallet submission response does not include an action hash', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'wallet_perp_submitAction') {
+        return {};
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-i', 'metaMaskInjected');
+
+    await expect(
+      signAndSubmitRuntimeSlotAction({
+        slotId: 'slot-i',
+        accountId: '0xabc123',
+        payload: {
+          id: 'uap_3',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            instrument: 'SOL-PERP',
+          },
+          walletRequest: {
+            method: 'wallet_perp_submitAction',
+            params: [{ payloadId: 'uap_3' }],
+          },
+        },
+      }),
+    ).rejects.toThrow('Wallet submission did not return an action hash.');
   });
 
   it('propagates provider lifecycle events to slot account watchers', async () => {
