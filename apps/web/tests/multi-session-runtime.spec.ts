@@ -5,6 +5,7 @@ import {
   connectRuntimeSlot,
   reconnectRuntimeSlot,
   signRuntimeSlotMessage,
+  watchRuntimeSlotAccount,
 } from '../lib/wallet/multi-session-runtime';
 
 const RUNTIME_TEST_SLOT_IDS = ['slot-a', 'slot-b', 'slot-c', 'slot-d', 'slot-e', 'slot-f'] as const;
@@ -13,6 +14,40 @@ const originalWindow = runtimeGlobal.window;
 
 function setRuntimeWindow(value: unknown): void {
   runtimeGlobal.window = value;
+}
+
+type RuntimeRequest = (parameters: { method: string }) => Promise<unknown>;
+
+function createEventfulProvider(requestImpl: RuntimeRequest): {
+  request: ReturnType<typeof vi.fn>;
+  on: ReturnType<typeof vi.fn>;
+  removeListener: ReturnType<typeof vi.fn>;
+  emit: (eventName: string, ...args: unknown[]) => void;
+  isMetaMask: true;
+} {
+  const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
+  const request = vi.fn(requestImpl);
+  const on = vi.fn((eventName: string, listener: (...args: unknown[]) => void) => {
+    const existing = listeners.get(eventName) ?? new Set<(...args: unknown[]) => void>();
+    existing.add(listener);
+    listeners.set(eventName, existing);
+  });
+  const removeListener = vi.fn((eventName: string, listener: (...args: unknown[]) => void) => {
+    listeners.get(eventName)?.delete(listener);
+  });
+  const emit = (eventName: string, ...args: unknown[]): void => {
+    for (const listener of listeners.get(eventName) ?? []) {
+      listener(...args);
+    }
+  };
+
+  return {
+    request,
+    on,
+    removeListener,
+    emit,
+    isMetaMask: true,
+  };
 }
 
 afterEach(async () => {
@@ -205,5 +240,57 @@ describe('multi-session runtime wallet connections', () => {
       method: 'personal_sign',
       params: ['Sign me', '0xabc123'],
     });
+  });
+
+  it('propagates provider lifecycle events to slot account watchers', async () => {
+    const provider = createEventfulProvider(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
+
+      return [];
+    });
+    setRuntimeWindow({
+      ethereum: {
+        providers: [provider],
+      },
+    });
+
+    await connectRuntimeSlot('slot-a', 'metaMaskInjected');
+
+    const snapshots: Array<{ isConnected: boolean; accountId?: string }> = [];
+    const unwatch = watchRuntimeSlotAccount('slot-a', (account) => {
+      snapshots.push({
+        isConnected: account.isConnected,
+        accountId: account.accountId,
+      });
+    });
+
+    provider.emit('accountsChanged', ['0xdef456']);
+    provider.emit('disconnect');
+
+    expect(snapshots[0]).toEqual({
+      isConnected: true,
+      accountId: '0xabc123',
+    });
+    expect(snapshots[1]).toEqual({
+      isConnected: true,
+      accountId: '0xdef456',
+    });
+    expect(snapshots[2]).toEqual({
+      isConnected: false,
+      accountId: undefined,
+    });
+
+    unwatch();
+    provider.emit('accountsChanged', ['0x123999']);
+    expect(snapshots).toHaveLength(3);
+    expect(provider.removeListener).toHaveBeenCalled();
   });
 });

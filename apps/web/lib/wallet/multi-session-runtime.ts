@@ -20,8 +20,14 @@ type ProviderRequestParameters = {
   params?: readonly unknown[];
 };
 
+type ProviderEventHandler = (...args: unknown[]) => void;
+
 type BrowserWalletProvider = {
   request: (parameters: ProviderRequestParameters) => Promise<unknown>;
+  on?: (eventName: string, listener: ProviderEventHandler) => void;
+  addListener?: (eventName: string, listener: ProviderEventHandler) => void;
+  removeListener?: (eventName: string, listener: ProviderEventHandler) => void;
+  off?: (eventName: string, listener: ProviderEventHandler) => void;
 };
 
 type BrowserWalletProviderContainer = {
@@ -91,6 +97,27 @@ function notifyAccountChange(slotRuntime: SlotRuntime): void {
   for (const listener of slotRuntime.listeners) {
     listener(slotRuntime.account);
   }
+}
+
+function sameRuntimeAccount(
+  left: RuntimeAccountSnapshot,
+  right: RuntimeAccountSnapshot,
+): boolean {
+  return (
+    left.isConnected === right.isConnected &&
+    left.accountId === right.accountId &&
+    left.connectorId === right.connectorId &&
+    left.connectorLabel === right.connectorLabel
+  );
+}
+
+function setRuntimeAccount(slotRuntime: SlotRuntime, nextAccount: RuntimeAccountSnapshot): void {
+  if (sameRuntimeAccount(slotRuntime.account, nextAccount)) {
+    return;
+  }
+
+  slotRuntime.account = nextAccount;
+  notifyAccountChange(slotRuntime);
 }
 
 function isMethodUnsupported(error: unknown): boolean {
@@ -292,6 +319,21 @@ function normalizeWalletAccountId(candidate: unknown): string | null {
   return trimmed.startsWith('0x') ? trimmed.toLowerCase() : trimmed;
 }
 
+function firstNormalizedAccountId(candidate: unknown): string | null {
+  if (!Array.isArray(candidate)) {
+    return null;
+  }
+
+  for (const accountCandidate of candidate) {
+    const accountId = normalizeWalletAccountId(accountCandidate);
+    if (accountId) {
+      return accountId;
+    }
+  }
+
+  return null;
+}
+
 async function requestAccountId(
   provider: BrowserWalletProvider,
   method: 'eth_accounts' | 'eth_requestAccounts',
@@ -325,6 +367,130 @@ async function requestAccountPermissions(provider: BrowserWalletProvider): Promi
 
     throw error;
   }
+}
+
+function addProviderEventListener(
+  provider: BrowserWalletProvider,
+  eventName: string,
+  listener: ProviderEventHandler,
+): () => void {
+  const subscribe =
+    typeof provider.on === 'function'
+      ? provider.on.bind(provider)
+      : typeof provider.addListener === 'function'
+        ? provider.addListener.bind(provider)
+        : null;
+  const unsubscribe =
+    typeof provider.removeListener === 'function'
+      ? provider.removeListener.bind(provider)
+      : typeof provider.off === 'function'
+        ? provider.off.bind(provider)
+        : null;
+
+  if (!subscribe) {
+    return () => {};
+  }
+
+  try {
+    subscribe(eventName, listener);
+  } catch {
+    return () => {};
+  }
+
+  if (!unsubscribe) {
+    return () => {};
+  }
+
+  return () => {
+    try {
+      unsubscribe(eventName, listener);
+    } catch {
+      // No-op: some providers expose partial listener APIs with asymmetric behavior.
+    }
+  };
+}
+
+async function syncRuntimeAccountFromProvider(
+  slotRuntime: SlotRuntime,
+  provider: BrowserWalletProvider,
+): Promise<void> {
+  try {
+    const accountId = await requestAccountId(provider, 'eth_accounts');
+    if (!accountId) {
+      setRuntimeAccount(slotRuntime, { isConnected: false });
+      return;
+    }
+
+    const connectorId = slotRuntime.account.connectorId;
+    if (!connectorId) {
+      setRuntimeAccount(slotRuntime, { isConnected: false });
+      return;
+    }
+
+    setRuntimeAccount(slotRuntime, {
+      isConnected: true,
+      accountId,
+      connectorId,
+      connectorLabel: slotRuntime.account.connectorLabel ?? CONNECTOR_LABELS[connectorId],
+    });
+  } catch {
+    setRuntimeAccount(slotRuntime, { isConnected: false });
+  }
+}
+
+function watchProviderLifecycle(slotRuntime: SlotRuntime, provider: BrowserWalletProvider): () => void {
+  const handleAccountsChanged: ProviderEventHandler = (accounts: unknown) => {
+    if (slotRuntime.provider !== provider) {
+      return;
+    }
+
+    const nextAccountId = firstNormalizedAccountId(accounts);
+    if (!nextAccountId) {
+      setRuntimeAccount(slotRuntime, { isConnected: false });
+      return;
+    }
+
+    const connectorId = slotRuntime.account.connectorId;
+    if (!connectorId) {
+      setRuntimeAccount(slotRuntime, { isConnected: false });
+      return;
+    }
+
+    setRuntimeAccount(slotRuntime, {
+      isConnected: true,
+      accountId: nextAccountId,
+      connectorId,
+      connectorLabel: slotRuntime.account.connectorLabel ?? CONNECTOR_LABELS[connectorId],
+    });
+  };
+  const handleDisconnect: ProviderEventHandler = () => {
+    if (slotRuntime.provider !== provider) {
+      return;
+    }
+
+    setRuntimeAccount(slotRuntime, { isConnected: false });
+  };
+  const handleConnect: ProviderEventHandler = () => {
+    if (slotRuntime.provider !== provider) {
+      return;
+    }
+
+    void syncRuntimeAccountFromProvider(slotRuntime, provider);
+  };
+
+  const stopWatchingAccountsChanged = addProviderEventListener(
+    provider,
+    'accountsChanged',
+    handleAccountsChanged,
+  );
+  const stopWatchingDisconnect = addProviderEventListener(provider, 'disconnect', handleDisconnect);
+  const stopWatchingConnect = addProviderEventListener(provider, 'connect', handleConnect);
+
+  return () => {
+    stopWatchingAccountsChanged();
+    stopWatchingDisconnect();
+    stopWatchingConnect();
+  };
 }
 
 async function connectWithReason(parameters: {
@@ -515,11 +681,43 @@ export function watchRuntimeSlotAccount(
   onChange: (account: RuntimeAccountSnapshot) => void,
 ): () => void {
   const runtime = getOrCreateSlotRuntime(slotId);
-  runtime.listeners.add(onChange);
+  let watchedProvider: BrowserWalletProvider | null = null;
+  let stopWatchingProvider: (() => void) | null = null;
+
+  const refreshProviderWatch = (): void => {
+    if (runtime.provider === watchedProvider) {
+      return;
+    }
+
+    if (stopWatchingProvider) {
+      stopWatchingProvider();
+      stopWatchingProvider = null;
+    }
+
+    watchedProvider = runtime.provider;
+    if (!watchedProvider) {
+      return;
+    }
+
+    stopWatchingProvider = watchProviderLifecycle(runtime, watchedProvider);
+  };
+
+  const listener = (account: RuntimeAccountSnapshot): void => {
+    refreshProviderWatch();
+    onChange(account);
+  };
+
+  runtime.listeners.add(listener);
+  refreshProviderWatch();
   onChange(runtime.account);
 
   return () => {
-    runtime.listeners.delete(onChange);
+    runtime.listeners.delete(listener);
+    if (stopWatchingProvider) {
+      stopWatchingProvider();
+      stopWatchingProvider = null;
+    }
+    watchedProvider = null;
   };
 }
 
