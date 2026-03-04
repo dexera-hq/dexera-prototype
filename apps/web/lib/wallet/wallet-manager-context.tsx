@@ -42,11 +42,11 @@ import type {
   WalletSessionState,
   WalletStateResult,
 } from './types';
+import { requestWalletChallenge, verifyWalletOwnership } from './verification';
 import {
   getConnectorOptions as buildConnectorOptions,
   isConnectorLocked,
 } from './wallet-manager-logic';
-import { requestWalletChallenge, verifyWalletOwnership } from './verification';
 
 const fallbackState = createEmptyWalletSessionState();
 
@@ -143,11 +143,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
     async (slotId: string, accountId: string, venue: VenueId): Promise<void> => {
       setSessionState((currentState) => {
         const slot = currentState.slots.find((candidate) => candidate.id === slotId);
-        if (
-          !slot ||
-          slot.status !== 'connected' ||
-          !accountIdsMatch(slot.accountId, accountId)
-        ) {
+        if (!slot || slot.status !== 'connected' || !accountIdsMatch(slot.accountId, accountId)) {
           return currentState;
         }
 
@@ -184,11 +180,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
 
         setSessionState((currentState) => {
           const slot = currentState.slots.find((candidate) => candidate.id === slotId);
-          if (
-            !slot ||
-            slot.status !== 'connected' ||
-            !accountIdsMatch(slot.accountId, accountId)
-          ) {
+          if (!slot || slot.status !== 'connected' || !accountIdsMatch(slot.accountId, accountId)) {
             return currentState;
           }
 
@@ -212,11 +204,7 @@ export function WalletManagerProvider({ children }: { children: ReactNode }) {
         const errorMessage = getErrorMessage(error);
         setSessionState((currentState) => {
           const slot = currentState.slots.find((candidate) => candidate.id === slotId);
-          if (
-            !slot ||
-            slot.status !== 'connected' ||
-            !accountIdsMatch(slot.accountId, accountId)
-          ) {
+          if (!slot || slot.status !== 'connected' || !accountIdsMatch(slot.accountId, accountId)) {
             return currentState;
           }
 
