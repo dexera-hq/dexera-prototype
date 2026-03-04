@@ -33,7 +33,18 @@ function readBoolean(record: Record<string, unknown>, key: string): boolean {
 }
 
 async function decodeJSONResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as unknown;
+  const rawBody = await response.text();
+  const trimmedBody = rawBody.trim();
+  let payload: unknown = null;
+
+  if (trimmedBody.length > 0) {
+    try {
+      payload = JSON.parse(trimmedBody) as unknown;
+    } catch {
+      payload = trimmedBody;
+    }
+  }
+
   if (!response.ok) {
     if (typeof payload === 'string' && payload.trim().length > 0) {
       throw new Error(payload);
