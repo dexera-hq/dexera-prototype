@@ -1,36 +1,36 @@
 import { NextResponse } from 'next/server';
-import { getDefaultChain } from '@/lib/market-data/config';
+import { getDefaultVenue } from '@/lib/market-data/config';
 
 function buildUrl(request: Request): URL {
   return new URL(request.url);
 }
 
-export function resolveChainFromRequest(request: Request): string {
-  const chainParam = buildUrl(request).searchParams.get('chain')?.trim();
-  if (chainParam && chainParam.length > 0) {
-    return chainParam;
+export function resolveVenueFromRequest(request: Request): string {
+  const venueParam = buildUrl(request).searchParams.get('venue')?.trim();
+  if (venueParam && venueParam.length > 0) {
+    return venueParam;
   }
 
-  return getDefaultChain();
+  return getDefaultVenue();
 }
 
-export function resolveSymbolsFromRequest(request: Request): string[] {
-  const symbolsParam = buildUrl(request).searchParams.get('symbols');
-  if (!symbolsParam) {
+export function resolveInstrumentsFromRequest(request: Request): string[] {
+  const instrumentsParam = buildUrl(request).searchParams.get('instruments');
+  if (!instrumentsParam) {
     return [];
   }
 
-  const normalized = symbolsParam
+  const normalized = instrumentsParam
     .split(',')
-    .map((symbol) => symbol.trim().toUpperCase())
-    .filter((symbol) => symbol.length > 0);
+    .map((instrument) => instrument.trim().toUpperCase())
+    .filter((instrument) => instrument.length > 0);
 
   return [...new Set(normalized)];
 }
 
-export function resolveAccountFromRequest(request: Request): string | undefined {
-  const account = buildUrl(request).searchParams.get('account')?.trim();
-  return account && account.length > 0 ? account : undefined;
+export function resolveAccountIdFromRequest(request: Request): string | undefined {
+  const accountId = buildUrl(request).searchParams.get('accountId')?.trim();
+  return accountId && accountId.length > 0 ? accountId : undefined;
 }
 
 export function marketDataErrorResponse(error: unknown): Response {

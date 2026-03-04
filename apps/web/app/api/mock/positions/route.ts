@@ -2,17 +2,17 @@ import { NextResponse } from 'next/server';
 import { getMarketDataProvider } from '@/lib/market-data/market-data-provider';
 import {
   marketDataErrorResponse,
-  resolveAccountFromRequest,
-  resolveChainFromRequest,
+  resolveAccountIdFromRequest,
+  resolveVenueFromRequest,
 } from '@/lib/market-data/route-helpers';
 
 export async function GET(request: Request): Promise<Response> {
   try {
-    const account = resolveAccountFromRequest(request);
-    const chain = resolveChainFromRequest(request);
+    const accountId = resolveAccountIdFromRequest(request);
+    const venue = resolveVenueFromRequest(request);
     const provider = getMarketDataProvider();
-    const balances = await provider.getBalances(account, chain);
-    return NextResponse.json(balances);
+    const positions = await provider.getPositions(accountId, venue);
+    return NextResponse.json(positions);
   } catch (error) {
     return marketDataErrorResponse(error);
   }

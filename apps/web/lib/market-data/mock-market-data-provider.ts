@@ -1,53 +1,64 @@
-import { getDefaultChain } from '@/lib/market-data/config';
-import { getMockBalances, getMockSpotPrices, getMockTokens } from '@/lib/market-data/mock-market-data';
+import { getDefaultVenue } from '@/lib/market-data/config';
+import {
+  getMockInstruments,
+  getMockMarkPrices,
+  getMockPositions,
+} from '@/lib/market-data/mock-market-data';
 import type { MarketDataProvider } from '@/lib/market-data/provider';
-import type { Balance, SpotPrice, TokenMetadata } from '@/lib/market-data/types';
+import type { InstrumentMetadata, MarkPrice, PerpPosition } from '@/lib/market-data/types';
 
 type MockMarketDataProviderOptions = {
   jitter: boolean;
-  defaultChain: string;
+  defaultVenue: string;
 };
 
 export class MockMarketDataProvider implements MarketDataProvider {
   private readonly jitter: boolean;
-  private readonly defaultChain: string;
+  private readonly defaultVenue: string;
 
   constructor(options?: Partial<MockMarketDataProviderOptions>) {
     this.jitter = options?.jitter ?? false;
-    this.defaultChain = options?.defaultChain ?? getDefaultChain();
+    this.defaultVenue = options?.defaultVenue ?? getDefaultVenue();
   }
 
-  async getTokens(chain?: string): Promise<TokenMetadata[]> {
-    return getMockTokens(chain ?? this.defaultChain);
+  async getInstruments(venue?: string): Promise<InstrumentMetadata[]> {
+    return getMockInstruments(venue ?? this.defaultVenue);
   }
 
-  async getSpotPrices(symbols: string[] = [], chain?: string): Promise<Record<string, SpotPrice>> {
-    const chainSymbols = this.getChainSymbols(chain);
-    if (chainSymbols.length === 0) {
+  async getMarkPrices(
+    instruments: string[] = [],
+    venue?: string,
+  ): Promise<Record<string, MarkPrice>> {
+    const venueInstruments = this.getVenueInstruments(venue);
+    if (venueInstruments.length === 0) {
       return {};
     }
 
-    const sourceSymbols = symbols.length > 0 ? symbols : chainSymbols;
-    const resolvedSymbols = this.scopeSymbolsToChain(sourceSymbols, chainSymbols);
-    if (resolvedSymbols.length === 0) {
+    const sourceInstruments = instruments.length > 0 ? instruments : venueInstruments;
+    const resolvedInstruments = this.scopeInstrumentsToVenue(sourceInstruments, venueInstruments);
+    if (resolvedInstruments.length === 0) {
       return {};
     }
 
-    return getMockSpotPrices(resolvedSymbols, { jitter: this.jitter });
+    return getMockMarkPrices(resolvedInstruments, { jitter: this.jitter });
   }
 
-  async getBalances(account?: string, _chain?: string): Promise<Balance[]> {
-    return getMockBalances(account);
+  async getPositions(accountId?: string, _venue?: string): Promise<PerpPosition[]> {
+    return getMockPositions(accountId);
   }
 
-  private getChainSymbols(chain?: string): string[] {
-    return getMockTokens(chain ?? this.defaultChain).map((token) => token.symbol);
+  private getVenueInstruments(venue?: string): string[] {
+    return getMockInstruments(venue ?? this.defaultVenue).map(
+      (instrument) => instrument.instrument,
+    );
   }
 
-  private scopeSymbolsToChain(symbols: string[], chainSymbols: string[]): string[] {
-    const allowedSymbols = new Set(chainSymbols.map((symbol) => symbol.toUpperCase()));
-    return symbols
-      .map((symbol) => symbol.trim().toUpperCase())
-      .filter((symbol) => symbol.length > 0 && allowedSymbols.has(symbol));
+  private scopeInstrumentsToVenue(instruments: string[], venueInstruments: string[]): string[] {
+    const allowedInstruments = new Set(
+      venueInstruments.map((instrument) => instrument.toUpperCase()),
+    );
+    return instruments
+      .map((instrument) => instrument.trim().toUpperCase())
+      .filter((instrument) => instrument.length > 0 && allowedInstruments.has(instrument));
   }
 }

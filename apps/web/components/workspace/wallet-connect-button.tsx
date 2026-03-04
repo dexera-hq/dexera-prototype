@@ -1,18 +1,25 @@
 'use client';
 
+import type { VenueId } from '@dexera/shared-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { getWalletChainLabel } from '@/lib/wallet/chains';
-import type { WalletConnectorId, WalletSlotStatus } from '@/lib/wallet/types';
+import { SUPPORTED_VENUES, getWalletVenueLabel } from '@/lib/wallet/chains';
+import {
+  isWalletSlotTradable,
+  type ConnectWalletReason,
+  type WalletConnectorId,
+  type WalletSlot,
+  type WalletSlotStatus,
+} from '@/lib/wallet/types';
 import { useWalletManager } from '@/lib/wallet/wallet-manager-context';
 
-function truncateAddress(address: string): string {
-  if (address.length <= 10) {
-    return address;
+function truncateAccountId(accountId: string): string {
+  if (accountId.length <= 14) {
+    return accountId;
   }
 
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  return `${accountId.slice(0, 8)}...${accountId.slice(-4)}`;
 }
 
 function getStatusLabel(status: WalletSlotStatus): string {
@@ -27,6 +34,34 @@ function getStatusLabel(status: WalletSlotStatus): string {
   return 'Stale';
 }
 
+function getEligibilityLabel(slot: WalletSlot): string {
+  if (slot.status !== 'connected') {
+    return 'Offline';
+  }
+
+  if (slot.ownershipStatus === 'failed') {
+    return 'Verification Failed';
+  }
+
+  if (slot.eligibilityStatus === 'checking') {
+    return 'Checking Eligibility';
+  }
+
+  if (isWalletSlotTradable(slot)) {
+    return 'Tradable';
+  }
+
+  if (slot.eligibilityStatus === 'not-eligible') {
+    return 'Connected, Not Eligible';
+  }
+
+  if (slot.eligibilityStatus === 'error') {
+    return 'Verification Error';
+  }
+
+  return 'Connected, Unverified';
+}
+
 function getUnavailableConnectorHint(
   reason: 'connector-in-use' | 'connector-disabled' | undefined,
 ): string {
@@ -39,6 +74,26 @@ function getUnavailableConnectorHint(
   }
 
   return '';
+}
+
+function getConnectFailureMessage(reason: ConnectWalletReason): string {
+  if (reason === 'connector-missing') {
+    return 'No wallet provider was detected for this connector.';
+  }
+
+  if (reason === 'connector-in-use') {
+    return 'This connector is already in use by another connected slot.';
+  }
+
+  if (reason === 'verification-failed') {
+    return 'Wallet connected, but signature verification failed.';
+  }
+
+  if (reason === 'failed') {
+    return 'Wallet connection was canceled or rejected.';
+  }
+
+  return 'Unable to connect wallet right now.';
 }
 
 export function WalletConnectButton() {
@@ -60,7 +115,9 @@ export function WalletConnectButton() {
   const [isMounted, setIsMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const [selectedConnector, setSelectedConnector] = useState<WalletConnectorId>('injected');
+  const [selectedConnector, setSelectedConnector] = useState<WalletConnectorId>('metaMaskInjected');
+  const [selectedVenue, setSelectedVenue] = useState<VenueId>('hyperliquid');
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -76,7 +133,8 @@ export function WalletConnectButton() {
       return 'No active wallet';
     }
 
-    return `${truncateAddress(activeSlot.walletAddress)} · ${getWalletChainLabel(activeSlot.chainId)}`;
+    const tradableTag = isWalletSlotTradable(activeSlot) ? 'Tradable' : 'Restricted';
+    return `${truncateAccountId(activeSlot.accountId)} · ${getWalletVenueLabel(activeSlot.venue)} · ${tradableTag}`;
   }, [activeSlot]);
 
   useEffect(() => {
@@ -141,24 +199,42 @@ export function WalletConnectButton() {
 
   async function handleConnectWallet() {
     await runAsyncAction('connect', async () => {
-      await connectNewSlot(selectedConnector);
+      const result = await connectNewSlot(selectedConnector, selectedVenue);
+
+      if (!result.connected) {
+        setActionMessage(getConnectFailureMessage(result.reason));
+        return;
+      }
+
+      setActionMessage(
+        'Wallet connected. Complete signature verification to unlock tradable status for this venue.',
+      );
     });
   }
 
   async function handleReconnectWallet(slotId: string) {
     await runAsyncAction(`reconnect-${slotId}`, async () => {
-      await reconnectSlot(slotId);
+      const result = await reconnectSlot(slotId);
+
+      if (!result.connected) {
+        setActionMessage(getConnectFailureMessage(result.reason));
+        return;
+      }
+
+      setActionMessage('Wallet reconnected. Verification state was refreshed.');
     });
   }
 
   async function handleDisconnectWallet(slotId: string) {
     await runAsyncAction(`disconnect-${slotId}`, async () => {
       await disconnectSlot(slotId);
+      setActionMessage(null);
     });
   }
 
   function handleRemoveWallet(slotId: string) {
     removeSlot(slotId);
+    setActionMessage(null);
   }
 
   function handleSwitchWallet(slotId: string) {
@@ -167,6 +243,7 @@ export function WalletConnectButton() {
 
   function handleClearAllSlots() {
     clearAllSlots();
+    setActionMessage(null);
   }
 
   return (
@@ -193,13 +270,17 @@ export function WalletConnectButton() {
               slots.map((slot) => (
                 <div key={slot.id} className="wallet-slot-row">
                   <div className="wallet-slot-meta">
-                    <p className="wallet-slot-address">{truncateAddress(slot.walletAddress)}</p>
-                    <p className="wallet-slot-chain">{getWalletChainLabel(slot.chainId)}</p>
+                    <p className="wallet-slot-address">{truncateAccountId(slot.accountId)}</p>
+                    <p className="wallet-slot-chain">{getWalletVenueLabel(slot.venue)}</p>
                     <span className={`wallet-slot-status wallet-slot-status-${slot.status}`}>
                       {getStatusLabel(slot.status)}
                     </span>
+                    <span className="wallet-slot-status">{getEligibilityLabel(slot)}</span>
                     {activeSlotId === slot.id ? (
                       <span className="wallet-slot-active">Active</span>
+                    ) : null}
+                    {slot.eligibilityReason ? (
+                      <p className="wallet-connect-feedback">{slot.eligibilityReason}</p>
                     ) : null}
                   </div>
                   <div className="wallet-slot-actions">
@@ -270,6 +351,24 @@ export function WalletConnectButton() {
                 </option>
               ))}
             </select>
+
+            <label htmlFor="wallet-venue-select" className="wallet-connector-label">
+              Venue
+            </label>
+            <select
+              id="wallet-venue-select"
+              className="wallet-connector-select"
+              value={selectedVenue}
+              onChange={(event) => setSelectedVenue(event.target.value as VenueId)}
+              disabled={hasAnyPendingAction}
+            >
+              {SUPPORTED_VENUES.map((venue) => (
+                <option key={venue} value={venue}>
+                  {getWalletVenueLabel(venue)}
+                </option>
+              ))}
+            </select>
+
             <div className="wallet-connect-actions">
               <Button
                 type="button"
@@ -294,6 +393,11 @@ export function WalletConnectButton() {
                 Clear All
               </Button>
             </div>
+            {actionMessage ? (
+              <p className="wallet-connect-feedback" role="status" aria-live="polite">
+                {actionMessage}
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}

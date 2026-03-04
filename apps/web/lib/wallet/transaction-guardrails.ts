@@ -1,26 +1,20 @@
-import type { UnsignedTxPayload } from '@dexera/shared-types';
+import type { UnsignedActionPayload } from '@dexera/shared-types';
 
 import type { WalletSlot } from './types';
 
-const FORBIDDEN_SIGNED_FIELDS = [
-  'from',
-  'signature',
-  'rawTransaction',
-  'signedTransaction',
-  'txHash',
-] as const;
+const FORBIDDEN_SIGNED_FIELDS = ['signature', 'rawAction', 'signedAction', 'actionHash'] as const;
 
 export const SIGNING_ONLY_DISCLAIMER_LINES = [
-  'Transactions are prepared server-side as unsigned payloads only.',
-  'Your wallet signs locally in the browser. Private keys never leave your wallet.',
-  'Verify the chain, destination, value, and calldata before approving.',
+  'Actions are prepared server-side as unsigned payloads only.',
+  'Your wallet signs locally in the browser. Private keys never leave your wallet runtime.',
+  'Verify venue, account, instrument, side, and size before approving.',
 ] as const;
 
 export type TransactionGuardrailCode =
   | 'invalid-payload'
   | 'missing-wallet'
-  | 'chain-mismatch'
-  | 'wallet-mismatch'
+  | 'venue-mismatch'
+  | 'account-mismatch'
   | 'signed-field-present'
   | 'server-signing-forbidden'
   | 'signing-failed';
@@ -43,38 +37,51 @@ function hasNonEmptyString(record: Record<string, unknown>, key: string): boolea
   return typeof record[key] === 'string' && record[key].trim().length > 0;
 }
 
-function normalizeWalletAddress(walletAddress: string): string {
-  return walletAddress.trim().toLowerCase();
+function normalizeAccountId(accountId: string): string {
+  return accountId.trim().toLowerCase();
 }
 
-export function validateUnsignedTxPayload(
+export function validateUnsignedActionPayload(
   payload: unknown,
-): { ok: true; payload: UnsignedTxPayload } | { ok: false; error: TransactionGuardrailError } {
+): { ok: true; payload: UnsignedActionPayload } | { ok: false; error: TransactionGuardrailError } {
   if (!isRecord(payload)) {
     return {
       ok: false,
-      error: new TransactionGuardrailError('invalid-payload', 'Unsigned transaction payload must be an object.'),
+      error: new TransactionGuardrailError(
+        'invalid-payload',
+        'Unsigned action payload must be an object.',
+      ),
     };
   }
 
-  for (const key of ['id', 'walletAddress', 'kind', 'to', 'data', 'value']) {
+  for (const key of ['id', 'accountId', 'venue', 'kind']) {
     if (!hasNonEmptyString(payload, key)) {
       return {
         ok: false,
         error: new TransactionGuardrailError(
           'invalid-payload',
-          `Unsigned transaction payload is missing a valid "${key}" field.`,
+          `Unsigned action payload is missing a valid "${key}" field.`,
         ),
       };
     }
   }
 
-  if (typeof payload.chainId !== 'number' || !Number.isInteger(payload.chainId) || payload.chainId <= 0) {
+  if (!isRecord(payload.action)) {
     return {
       ok: false,
       error: new TransactionGuardrailError(
         'invalid-payload',
-        'Unsigned transaction payload must include a positive integer chainId.',
+        'Unsigned action payload must include an action object.',
+      ),
+    };
+  }
+
+  if (payload.kind !== 'perp_order_action') {
+    return {
+      ok: false,
+      error: new TransactionGuardrailError(
+        'invalid-payload',
+        'Unsupported unsigned action payload kind.',
       ),
     };
   }
@@ -85,7 +92,7 @@ export function validateUnsignedTxPayload(
         ok: false,
         error: new TransactionGuardrailError(
           'signed-field-present',
-          `Unsigned transaction payload must not include "${field}".`,
+          `Unsigned action payload must not include "${field}".`,
         ),
       };
     }
@@ -93,12 +100,14 @@ export function validateUnsignedTxPayload(
 
   return {
     ok: true,
-    payload: payload as unknown as UnsignedTxPayload,
+    payload: payload as unknown as UnsignedActionPayload,
   };
 }
 
-export function assertUnsignedTxPayload(payload: unknown): asserts payload is UnsignedTxPayload {
-  const result = validateUnsignedTxPayload(payload);
+export function assertUnsignedActionPayload(
+  payload: unknown,
+): asserts payload is UnsignedActionPayload {
+  const result = validateUnsignedActionPayload(payload);
 
   if (!result.ok) {
     throw result.error;
@@ -106,27 +115,27 @@ export function assertUnsignedTxPayload(payload: unknown): asserts payload is Un
 }
 
 export function assertPayloadMatchesActiveWallet(
-  payload: UnsignedTxPayload,
-  activeWallet: Pick<WalletSlot, 'walletAddress' | 'chainId'> | null | undefined,
+  payload: UnsignedActionPayload,
+  activeWallet: Pick<WalletSlot, 'accountId' | 'venue'> | null | undefined,
 ): void {
   if (!activeWallet) {
     throw new TransactionGuardrailError(
       'missing-wallet',
-      'Connect a wallet before attempting to sign an unsigned transaction.',
+      'Connect a wallet before attempting to sign an unsigned action.',
     );
   }
 
-  if (payload.chainId !== activeWallet.chainId) {
+  if (payload.venue !== activeWallet.venue) {
     throw new TransactionGuardrailError(
-      'chain-mismatch',
-      `Unsigned transaction chain ${payload.chainId} does not match active wallet chain ${activeWallet.chainId}.`,
+      'venue-mismatch',
+      `Unsigned action venue ${payload.venue} does not match active wallet venue ${activeWallet.venue}.`,
     );
   }
 
-  if (normalizeWalletAddress(payload.walletAddress) !== normalizeWalletAddress(activeWallet.walletAddress)) {
+  if (normalizeAccountId(payload.accountId) !== normalizeAccountId(activeWallet.accountId)) {
     throw new TransactionGuardrailError(
-      'wallet-mismatch',
-      `Unsigned transaction wallet ${payload.walletAddress} does not match active wallet ${activeWallet.walletAddress}.`,
+      'account-mismatch',
+      `Unsigned action account ${payload.accountId} does not match active wallet ${activeWallet.accountId}.`,
     );
   }
 }
@@ -135,7 +144,7 @@ export function assertClientSigningContext(): void {
   if (typeof window === 'undefined') {
     throw new TransactionGuardrailError(
       'server-signing-forbidden',
-      'Transactions may only be signed from the client runtime.',
+      'Actions may only be signed from the client runtime.',
     );
   }
 }

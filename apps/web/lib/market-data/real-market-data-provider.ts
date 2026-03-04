@@ -1,5 +1,5 @@
 import type { MarketDataProvider } from '@/lib/market-data/provider';
-import type { Balance, SpotPrice, TokenMetadata } from '@/lib/market-data/types';
+import type { InstrumentMetadata, MarkPrice, PerpPosition } from '@/lib/market-data/types';
 
 function notImplemented(methodName: string): never {
   throw new Error(
@@ -8,15 +8,18 @@ function notImplemented(methodName: string): never {
 }
 
 export class RealMarketDataProvider implements MarketDataProvider {
-  async getTokens(_chain?: string): Promise<TokenMetadata[]> {
-    return notImplemented('getTokens');
+  async getInstruments(_venue?: string): Promise<InstrumentMetadata[]> {
+    return notImplemented('getInstruments');
   }
 
-  async getSpotPrices(_symbols?: string[], _chain?: string): Promise<Record<string, SpotPrice>> {
-    return notImplemented('getSpotPrices');
+  async getMarkPrices(
+    _instruments?: string[],
+    _venue?: string,
+  ): Promise<Record<string, MarkPrice>> {
+    return notImplemented('getMarkPrices');
   }
 
-  async getBalances(_account?: string, _chain?: string): Promise<Balance[]> {
-    return notImplemented('getBalances');
+  async getPositions(_accountId?: string, _venue?: string): Promise<PerpPosition[]> {
+    return notImplemented('getPositions');
   }
 }

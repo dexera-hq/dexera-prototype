@@ -1,47 +1,50 @@
 import { describe, expect, it } from 'vitest';
 
-import { submitUnsignedTransaction } from '../lib/wallet/sign-unsigned-transaction';
+import { submitUnsignedAction } from '../lib/wallet/sign-unsigned-transaction';
 import {
   TransactionGuardrailError,
   assertPayloadMatchesActiveWallet,
-  validateUnsignedTxPayload,
+  validateUnsignedActionPayload,
 } from '../lib/wallet/transaction-guardrails';
 import type { WalletSlot } from '../lib/wallet/types';
 
 const activeWallet: WalletSlot = {
   id: 'wallet-1',
-  walletAddress: '0x1111',
-  chainId: 1,
-  connectorId: 'injected',
+  accountId: '0x0000000000000000000000000000000000000001',
+  venue: 'hyperliquid',
+  connectorId: 'metaMaskInjected',
   lastConnectedAt: '2026-03-02T10:00:00.000Z',
   status: 'connected',
+  ownershipStatus: 'verified',
+  eligibilityStatus: 'tradable',
 };
 
 describe('transaction guardrails', () => {
-  it('accepts a valid unsigned transaction payload', () => {
-    const result = validateUnsignedTxPayload({
-      id: 'utxp_1',
-      walletAddress: '0x1111',
-      chainId: 1,
-      kind: 'evm_transaction',
-      to: '0x1111111111111111111111111111111111111111',
-      data: '0xdeadbeef',
-      value: '0',
+  it('accepts a valid unsigned action payload', () => {
+    const result = validateUnsignedActionPayload({
+      id: 'uap_1',
+      accountId: '0x0000000000000000000000000000000000000001',
+      venue: 'hyperliquid',
+      kind: 'perp_order_action',
+      action: {
+        instrument: 'BTC-PERP',
+        side: 'buy',
+      },
     });
 
     expect(result.ok).toBe(true);
   });
 
-  it('rejects a payload that includes signed transaction fields', () => {
-    const result = validateUnsignedTxPayload({
-      id: 'utxp_1',
-      walletAddress: '0x1111',
-      chainId: 1,
-      kind: 'evm_transaction',
-      to: '0x1111111111111111111111111111111111111111',
-      data: '0xdeadbeef',
-      value: '0',
-      txHash: '0xabc',
+  it('rejects a payload that includes signed action fields', () => {
+    const result = validateUnsignedActionPayload({
+      id: 'uap_1',
+      accountId: '0x0000000000000000000000000000000000000001',
+      venue: 'hyperliquid',
+      kind: 'perp_order_action',
+      action: {
+        instrument: 'BTC-PERP',
+      },
+      actionHash: '0xabc',
     });
 
     expect(result.ok).toBe(false);
@@ -51,17 +54,17 @@ describe('transaction guardrails', () => {
     expect(result.error.code).toBe('signed-field-present');
   });
 
-  it('rejects chain mismatches against the active wallet', () => {
+  it('rejects venue mismatches against the active wallet', () => {
     expect(() =>
       assertPayloadMatchesActiveWallet(
         {
-          id: 'utxp_1',
-          walletAddress: '0x1111',
-          chainId: 999,
-          kind: 'evm_transaction',
-          to: '0x1111111111111111111111111111111111111111',
-          data: '0xdeadbeef',
-          value: '0',
+          id: 'uap_1',
+          accountId: '0x0000000000000000000000000000000000000001',
+          venue: 'aster',
+          kind: 'perp_order_action',
+          action: {
+            instrument: 'BTC-PERP',
+          },
         },
         activeWallet,
       ),
@@ -77,24 +80,24 @@ describe('transaction guardrails', () => {
     });
 
     try {
-      const result = await submitUnsignedTransaction({
+      const result = await submitUnsignedAction({
         payload: {
-          id: 'utxp_1',
-          walletAddress: '0x1111',
-          chainId: 1,
-          kind: 'evm_transaction',
-          to: '0x1111111111111111111111111111111111111111',
-          data: '0xdeadbeef',
-          value: '0',
+          id: 'uap_1',
+          accountId: '0x0000000000000000000000000000000000000001',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            instrument: 'BTC-PERP',
+          },
         },
         activeWallet,
         submitter: {
-          sendTransaction: async () => '0xsubmitted',
+          sendAction: async () => 'action_hash_1',
         },
       });
 
-      expect(result.transactionHash).toBe('0xsubmitted');
-      expect(result.walletAddress).toBe(activeWallet.walletAddress);
+      expect(result.actionHash).toBe('action_hash_1');
+      expect(result.accountId).toBe(activeWallet.accountId);
     } finally {
       if (previousWindow === undefined) {
         Reflect.deleteProperty(globalWindow, 'window');
@@ -107,17 +110,17 @@ describe('transaction guardrails', () => {
     }
   });
 
-  it('rejects wallet mismatches against the active wallet', () => {
+  it('rejects account mismatches against the active wallet', () => {
     expect(() =>
       assertPayloadMatchesActiveWallet(
         {
-          id: 'utxp_1',
-          walletAddress: '0x9999',
-          chainId: 1,
-          kind: 'evm_transaction',
-          to: '0x1111111111111111111111111111111111111111',
-          data: '0xdeadbeef',
-          value: '0',
+          id: 'uap_1',
+          accountId: '0x00000000000000000000000000000000000000ff',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            instrument: 'BTC-PERP',
+          },
         },
         activeWallet,
       ),

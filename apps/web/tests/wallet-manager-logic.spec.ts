@@ -3,51 +3,46 @@ import { describe, expect, it } from 'vitest';
 import type { WalletSlot } from '../lib/wallet/types';
 import { getConnectorOptions, isConnectorLocked } from '../lib/wallet/wallet-manager-logic';
 
-const connectedInjectedSlot: WalletSlot = {
+const connectedHyperliquidSlot: WalletSlot = {
   id: 'slot-1',
-  walletAddress: '0x1111',
-  chainId: 1,
-  connectorId: 'injected',
-  label: 'Injected',
+  accountId: '0x0000000000000000000000000000000000000002',
+  venue: 'hyperliquid',
+  connectorId: 'metaMaskInjected',
+  label: 'MetaMask',
   lastConnectedAt: '2026-03-02T10:00:00.000Z',
   status: 'connected',
+  ownershipStatus: 'verified',
+  eligibilityStatus: 'tradable',
 };
 
 describe('wallet manager logic', () => {
   it('detects connector lock when another connected slot uses the connector', () => {
-    const locked = isConnectorLocked([connectedInjectedSlot], 'injected');
+    const locked = isConnectorLocked([connectedHyperliquidSlot], 'metaMaskInjected');
 
     expect(locked).toBe(true);
   });
 
   it('ignores the provided slot id when checking connector lock', () => {
-    const locked = isConnectorLocked([connectedInjectedSlot], 'injected', 'slot-1');
+    const locked = isConnectorLocked([connectedHyperliquidSlot], 'metaMaskInjected', 'slot-1');
 
     expect(locked).toBe(false);
   });
 
   it('builds connector options with lock and disabled reasons', () => {
     const options = getConnectorOptions({
-      slots: [connectedInjectedSlot],
-      walletConnectEnabled: false,
+      slots: [connectedHyperliquidSlot],
+      runtimeEnabled: true,
     });
 
+    const metamask = options.find((option) => option.id === 'metaMaskInjected');
     const injected = options.find((option) => option.id === 'injected');
-    const coinbase = options.find((option) => option.id === 'coinbaseWalletSDK');
-    const walletConnect = options.find((option) => option.id === 'walletConnect');
 
-    expect(injected).toEqual({
-      id: 'injected',
-      label: 'Injected',
+    expect(metamask).toEqual({
+      id: 'metaMaskInjected',
+      label: 'MetaMask',
       available: false,
       unavailableReason: 'connector-in-use',
     });
-    expect(coinbase?.available).toBe(true);
-    expect(walletConnect).toEqual({
-      id: 'walletConnect',
-      label: 'WalletConnect',
-      available: false,
-      unavailableReason: 'connector-disabled',
-    });
+    expect(injected?.available).toBe(true);
   });
 });

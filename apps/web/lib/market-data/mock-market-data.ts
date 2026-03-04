@@ -1,74 +1,87 @@
-import type { Balance, SpotPrice, TokenMetadata } from '@/lib/market-data/types';
+import type { InstrumentMetadata, MarkPrice, PerpPosition } from '@/lib/market-data/types';
 
-const MOCK_TOKENS: readonly TokenMetadata[] = [
+const MOCK_INSTRUMENTS: readonly InstrumentMetadata[] = [
   {
-    symbol: 'ETH',
-    name: 'Ether',
-    decimals: 18,
-    chain: 'hyperliquid',
-    id: 'eth',
-    logoUrl: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+    instrument: 'BTC-PERP',
+    name: 'Bitcoin Perpetual',
+    venue: 'hyperliquid',
+    baseAsset: 'BTC',
+    quoteAsset: 'USD',
   },
   {
-    symbol: 'BTC',
-    name: 'Bitcoin',
-    decimals: 8,
-    chain: 'hyperliquid',
-    id: 'btc',
-    logoUrl: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
+    instrument: 'ETH-PERP',
+    name: 'Ether Perpetual',
+    venue: 'hyperliquid',
+    baseAsset: 'ETH',
+    quoteAsset: 'USD',
   },
   {
-    symbol: 'USDC',
-    name: 'USD Coin',
-    decimals: 6,
-    chain: 'hyperliquid',
-    id: 'usdc',
-    logoUrl: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
+    instrument: 'SOL-PERP',
+    name: 'Solana Perpetual',
+    venue: 'hyperliquid',
+    baseAsset: 'SOL',
+    quoteAsset: 'USD',
   },
   {
-    symbol: 'SOL',
-    name: 'Solana',
-    decimals: 9,
-    chain: 'hyperliquid',
-    id: 'sol',
-    logoUrl: 'https://assets.coingecko.com/coins/images/4128/small/solana.png',
+    instrument: 'BTC-PERP',
+    name: 'Bitcoin Perpetual',
+    venue: 'aster',
+    baseAsset: 'BTC',
+    quoteAsset: 'USD',
+  },
+  {
+    instrument: 'ETH-PERP',
+    name: 'Ether Perpetual',
+    venue: 'aster',
+    baseAsset: 'ETH',
+    quoteAsset: 'USD',
   },
 ];
 
-const BASE_PRICE_BY_SYMBOL: Readonly<Record<string, number>> = {
-  ETH: 3200.15,
-  BTC: 68450.25,
-  USDC: 1,
-  SOL: 145.4,
+const BASE_MARK_BY_INSTRUMENT: Readonly<Record<string, number>> = {
+  'BTC-PERP': 68450.25,
+  'ETH-PERP': 3200.15,
+  'SOL-PERP': 145.4,
 };
 
-const BASE_BALANCES: ReadonlyArray<{ symbol: string; balance: number }> = [
-  { symbol: 'ETH', balance: 1.5321 },
-  { symbol: 'BTC', balance: 0.084225 },
-  { symbol: 'USDC', balance: 12450.55 },
-  { symbol: 'SOL', balance: 312.48 },
+const BASE_POSITIONS: ReadonlyArray<PerpPosition> = [
+  {
+    instrument: 'BTC-PERP',
+    direction: 'long',
+    size: '0.25',
+    entryPrice: '68120.0',
+    markPrice: '68450.25',
+    unrealizedPnlUsd: '82.56',
+    notionalValue: '17112.56',
+    leverage: '4',
+    status: 'open',
+  },
+  {
+    instrument: 'ETH-PERP',
+    direction: 'short',
+    size: '1.60',
+    entryPrice: '3221.8',
+    markPrice: '3200.15',
+    unrealizedPnlUsd: '34.64',
+    notionalValue: '5120.24',
+    leverage: '3',
+    status: 'open',
+  },
 ];
-
-const BALANCE_DIGITS_BY_SYMBOL: Readonly<Record<string, number>> = {
-  ETH: 4,
-  BTC: 6,
-  USDC: 2,
-  SOL: 3,
-};
 
 const JITTER_WINDOW_MS = 30_000;
 
-function normalizeChain(chain: string | undefined): string | undefined {
-  if (typeof chain !== 'string') {
+function normalizeVenue(venue: string | undefined): string | undefined {
+  if (typeof venue !== 'string') {
     return undefined;
   }
 
-  const normalized = chain.trim().toLowerCase();
+  const normalized = venue.trim().toLowerCase();
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function normalizeSymbol(symbol: string): string {
-  return symbol.trim().toUpperCase();
+function normalizeInstrument(instrument: string): string {
+  return instrument.trim().toUpperCase();
 }
 
 function roundTo(value: number, fractionDigits: number): number {
@@ -84,84 +97,85 @@ function fnv1a32(value: string): number {
   return hash >>> 0;
 }
 
-function resolveSymbols(symbols: string[]): string[] {
-  const requested = symbols.map(normalizeSymbol).filter((symbol) => symbol.length > 0);
+function resolveInstruments(instruments: string[]): string[] {
+  const requested = instruments
+    .map(normalizeInstrument)
+    .filter((instrument) => instrument.length > 0);
   return [...new Set(requested)];
 }
 
-function applyJitter(basePrice: number, symbol: string, timestampMs: number): number {
+function applyJitter(basePrice: number, instrument: string, timestampMs: number): number {
   const jitterBucket = Math.floor(timestampMs / JITTER_WINDOW_MS);
-  const seed = fnv1a32(`${symbol}:${jitterBucket}`);
+  const seed = fnv1a32(`${instrument}:${jitterBucket}`);
   const offset = ((seed % 101) - 50) / 10_000;
   return roundTo(basePrice * (1 + offset), 2);
 }
 
-function formatBalance(symbol: string, balance: number): string {
-  const digits = BALANCE_DIGITS_BY_SYMBOL[symbol] ?? 4;
-  return balance.toFixed(digits);
-}
-
-function getAccountScaleFactor(account: string): number {
-  const hash = fnv1a32(account.trim().toLowerCase());
+function getAccountScaleFactor(accountId: string): number {
+  const hash = fnv1a32(accountId.trim().toLowerCase());
   return 0.85 + (hash % 31) / 100;
 }
 
-function getSymbolScaleFactor(account: string, symbol: string): number {
-  const hash = fnv1a32(`${account}:${symbol}`);
+function getInstrumentScaleFactor(accountId: string, instrument: string): number {
+  const hash = fnv1a32(`${accountId}:${instrument}`);
   return 0.92 + (hash % 17) / 100;
 }
 
-export function getMockTokens(chain?: string): TokenMetadata[] {
-  const normalizedChain = normalizeChain(chain);
-  const tokens =
-    normalizedChain === undefined
-      ? MOCK_TOKENS
-      : MOCK_TOKENS.filter((token) => token.chain.toLowerCase() === normalizedChain);
+export function getMockInstruments(venue?: string): InstrumentMetadata[] {
+  const normalizedVenue = normalizeVenue(venue);
+  const instruments =
+    normalizedVenue === undefined
+      ? MOCK_INSTRUMENTS
+      : MOCK_INSTRUMENTS.filter((instrument) => instrument.venue.toLowerCase() === normalizedVenue);
 
-  return tokens.map((token) => ({ ...token }));
+  return instruments.map((instrument) => ({ ...instrument }));
 }
 
-export function getMockSpotPrices(
-  symbols: string[],
+export function getMockMarkPrices(
+  instruments: string[],
   opts?: { jitter?: boolean },
-): Record<string, SpotPrice> {
+): Record<string, MarkPrice> {
   const timestampMs = Date.now();
-  const resolvedSymbols = resolveSymbols(symbols);
-  const prices: Record<string, SpotPrice> = {};
+  const resolvedInstruments = resolveInstruments(instruments);
+  const marks: Record<string, MarkPrice> = {};
 
-  for (const symbol of resolvedSymbols) {
-    const basePrice = BASE_PRICE_BY_SYMBOL[symbol];
+  for (const instrument of resolvedInstruments) {
+    const basePrice = BASE_MARK_BY_INSTRUMENT[instrument];
     if (basePrice === undefined) {
       continue;
     }
 
-    const price = opts?.jitter ? applyJitter(basePrice, symbol, timestampMs) : basePrice;
-    prices[symbol] = {
-      symbol,
+    const price = opts?.jitter ? applyJitter(basePrice, instrument, timestampMs) : basePrice;
+    marks[instrument] = {
+      instrument,
       price,
       timestampMs,
     };
   }
 
-  return prices;
+  return marks;
 }
 
-export function getMockBalances(account?: string): Balance[] {
-  const normalizedAccount = account?.trim().toLowerCase();
-  if (!normalizedAccount) {
-    return BASE_BALANCES.map((entry) => ({
-      symbol: entry.symbol,
-      balance: formatBalance(entry.symbol, entry.balance),
-    }));
+export function getMockPositions(accountId?: string): PerpPosition[] {
+  const normalizedAccountId = accountId?.trim().toLowerCase();
+  if (!normalizedAccountId) {
+    return BASE_POSITIONS.map((position) => ({ ...position }));
   }
 
-  const accountScaleFactor = getAccountScaleFactor(normalizedAccount);
-  return BASE_BALANCES.map((entry) => {
-    const symbolScaleFactor = getSymbolScaleFactor(normalizedAccount, entry.symbol);
-    const adjustedBalance = entry.balance * accountScaleFactor * symbolScaleFactor;
+  const accountScaleFactor = getAccountScaleFactor(normalizedAccountId);
+  return BASE_POSITIONS.map((position) => {
+    const instrumentScaleFactor = getInstrumentScaleFactor(
+      normalizedAccountId,
+      position.instrument,
+    );
+    const scaledSize = Number(position.size) * accountScaleFactor * instrumentScaleFactor;
+    const scaledNotional =
+      Number(position.notionalValue) * accountScaleFactor * instrumentScaleFactor;
+
     return {
-      symbol: entry.symbol,
-      balance: formatBalance(entry.symbol, adjustedBalance),
+      ...position,
+      size: scaledSize.toFixed(3),
+      notionalValue: scaledNotional.toFixed(2),
     };
   });
 }

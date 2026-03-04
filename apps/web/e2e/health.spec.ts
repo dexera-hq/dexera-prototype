@@ -18,6 +18,9 @@ test('home page renders draggable trading workspace', async ({ page }) => {
   await page.getByRole('button', { name: 'Add Module' }).click();
   await expect(moduleCards).toHaveCount(6);
 
-  await moduleCards.nth(0).getByRole('button', { name: /Remove/i }).click();
+  await moduleCards
+    .nth(0)
+    .getByRole('button', { name: /Remove/i })
+    .click();
   await expect(moduleCards).toHaveCount(5);
 });

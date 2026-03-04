@@ -1,4 +1,4 @@
-const DEFAULT_CHAIN_FALLBACK = 'hyperliquid';
+const DEFAULT_VENUE_FALLBACK = 'hyperliquid';
 
 function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
   if (typeof value !== 'string') {
@@ -16,9 +16,9 @@ function parseBooleanEnv(value: string | undefined, defaultValue: boolean): bool
   return defaultValue;
 }
 
-export function getDefaultChain(): string {
-  const chain = process.env.DEFAULT_CHAIN?.trim();
-  return chain && chain.length > 0 ? chain : DEFAULT_CHAIN_FALLBACK;
+export function getDefaultVenue(): string {
+  const venue = process.env.DEFAULT_VENUE?.trim();
+  return venue && venue.length > 0 ? venue : DEFAULT_VENUE_FALLBACK;
 }
 
 export function isMockMarketDataEnabled(): boolean {

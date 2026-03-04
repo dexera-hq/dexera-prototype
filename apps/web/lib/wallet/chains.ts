@@ -1,38 +1,12 @@
-import type { Chain } from 'viem';
-import { mainnet } from 'wagmi/chains';
+import type { VenueId } from '@dexera/shared-types';
 
-export const HYPER_EVM_CHAIN_ID = 999;
-export const HYPER_EVM_RPC_URL = 'https://rpc.hyperliquid.xyz/evm';
-export const HYPER_EVM_EXPLORER_URL = 'https://hyperevmscan.io';
+export const SUPPORTED_VENUES = ['hyperliquid', 'aster'] as const satisfies readonly VenueId[];
 
-export const hyperEvmChainDefinition = {
-  id: HYPER_EVM_CHAIN_ID,
-  name: 'HyperEVM',
-  nativeCurrency: {
-    name: 'Hyperliquid',
-    symbol: 'HYPE',
-    decimals: 18,
-  },
-  rpcUrls: {
-    default: {
-      http: [HYPER_EVM_RPC_URL],
-    },
-    public: {
-      http: [HYPER_EVM_RPC_URL],
-    },
-  },
-  blockExplorers: {
-    default: {
-      name: 'HyperEVM Explorer',
-      url: HYPER_EVM_EXPLORER_URL,
-    },
-  },
-  testnet: false,
-} as const;
+const VENUE_LABELS: Record<VenueId, string> = {
+  hyperliquid: 'Hyperliquid',
+  aster: 'Aster',
+};
 
-export const hyperEvmChain = hyperEvmChainDefinition satisfies Chain;
-export const walletChains = [mainnet, hyperEvmChain] as const satisfies readonly [Chain, ...Chain[]];
-
-export function getWalletChainLabel(chainId: number): string {
-  return walletChains.find((chain) => chain.id === chainId)?.name ?? `Chain ${chainId}`;
+export function getWalletVenueLabel(venue: VenueId): string {
+  return VENUE_LABELS[venue] ?? venue;
 }

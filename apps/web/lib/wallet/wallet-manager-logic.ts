@@ -6,9 +6,10 @@ import {
 } from './types';
 
 const CONNECTOR_LABELS: Record<WalletConnectorId, string> = {
-  injected: 'Injected',
-  coinbaseWalletSDK: 'Coinbase Wallet',
-  walletConnect: 'WalletConnect',
+  metaMaskInjected: 'MetaMask',
+  coinbaseInjected: 'Coinbase Wallet',
+  rabbyInjected: 'Rabby',
+  injected: 'Injected Wallet',
 };
 
 export function getWalletConnectorLabel(connectorId: WalletConnectorId): string {
@@ -30,13 +31,13 @@ export function isConnectorLocked(
 
 export function getConnectorOptions(parameters: {
   slots: readonly WalletSlot[];
-  walletConnectEnabled: boolean;
+  runtimeEnabled: boolean;
   activeSlotId?: string;
 }): WalletConnectorOption[] {
-  const { slots, walletConnectEnabled, activeSlotId } = parameters;
+  const { slots, runtimeEnabled, activeSlotId } = parameters;
 
   return WALLET_CONNECTOR_IDS.map((connectorId) => {
-    if (connectorId === 'walletConnect' && !walletConnectEnabled) {
+    if (!runtimeEnabled) {
       return {
         id: connectorId,
         label: getWalletConnectorLabel(connectorId),

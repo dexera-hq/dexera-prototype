@@ -1,12 +1,12 @@
 import type {
-  BffBuildUnsignedTransactionRequest,
-  BffBuildUnsignedTransactionResponse,
+  BffBuildUnsignedActionRequest,
+  BffBuildUnsignedActionResponse,
 } from '@dexera/api-types/openapi';
 
-import { TransactionGuardrailError, assertUnsignedTxPayload } from './transaction-guardrails';
+import { TransactionGuardrailError, assertUnsignedActionPayload } from './transaction-guardrails';
 
-const DEFAULT_UNSIGNED_TRANSACTION_ENDPOINT = '/api/v1/transactions/unsigned';
-const CLIENT_SIGNING_ONLY_POLICY: BffBuildUnsignedTransactionResponse['signingPolicy'] =
+const DEFAULT_UNSIGNED_ACTION_ENDPOINT = '/api/v1/perp/actions/unsigned';
+const CLIENT_SIGNING_ONLY_POLICY: BffBuildUnsignedActionResponse['signingPolicy'] =
   'client-signing-only';
 
 type FetchLike = typeof fetch;
@@ -15,15 +15,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-export async function buildUnsignedTransaction(
-  request: BffBuildUnsignedTransactionRequest,
+export async function buildUnsignedAction(
+  request: BffBuildUnsignedActionRequest,
   options?: {
     endpoint?: string;
     fetchImpl?: FetchLike;
   },
-): Promise<BffBuildUnsignedTransactionResponse> {
+): Promise<BffBuildUnsignedActionResponse> {
   const fetchImpl = options?.fetchImpl ?? fetch;
-  const endpoint = options?.endpoint ?? DEFAULT_UNSIGNED_TRANSACTION_ENDPOINT;
+  const endpoint = options?.endpoint ?? DEFAULT_UNSIGNED_ACTION_ENDPOINT;
 
   const response = await fetchImpl(endpoint, {
     method: 'POST',
@@ -36,7 +36,7 @@ export async function buildUnsignedTransaction(
   if (!response.ok) {
     throw new TransactionGuardrailError(
       'invalid-payload',
-      `Unsigned transaction build failed with status ${response.status}.`,
+      `Unsigned action build failed with status ${response.status}.`,
     );
   }
 
@@ -45,7 +45,7 @@ export async function buildUnsignedTransaction(
   if (!isRecord(payload)) {
     throw new TransactionGuardrailError(
       'invalid-payload',
-      'Unsigned transaction build response must be a JSON object.',
+      'Unsigned action build response must be a JSON object.',
     );
   }
 
@@ -56,16 +56,19 @@ export async function buildUnsignedTransaction(
     );
   }
 
-  assertUnsignedTxPayload(payload.unsignedTxPayload);
+  assertUnsignedActionPayload(payload.unsignedActionPayload);
 
   if (typeof payload.orderId !== 'string' || payload.orderId.trim().length === 0) {
-    throw new TransactionGuardrailError('invalid-payload', 'Unsigned transaction response is missing orderId.');
+    throw new TransactionGuardrailError(
+      'invalid-payload',
+      'Unsigned action response is missing orderId.',
+    );
   }
 
   if (typeof payload.disclaimer !== 'string' || payload.disclaimer.trim().length === 0) {
     throw new TransactionGuardrailError(
       'invalid-payload',
-      'Unsigned transaction response is missing a signing disclaimer.',
+      'Unsigned action response is missing a signing disclaimer.',
     );
   }
 
@@ -73,6 +76,6 @@ export async function buildUnsignedTransaction(
     orderId: payload.orderId,
     signingPolicy: CLIENT_SIGNING_ONLY_POLICY,
     disclaimer: payload.disclaimer,
-    unsignedTxPayload: payload.unsignedTxPayload,
+    unsignedActionPayload: payload.unsignedActionPayload,
   };
 }

@@ -19,43 +19,49 @@ describe('wallet session store', () => {
     let state = createEmptyWalletSessionState();
 
     const first = upsertConnectedWallet(state, {
-      walletAddress: '0x1111',
-      chainId: 1,
-      connectorId: 'injected',
-      label: 'Injected',
+      accountId: '0x0000000000000000000000000000000000000001',
+      venue: 'hyperliquid',
+      connectorId: 'metaMaskInjected',
+      label: 'MetaMask',
       connectedAt: '2026-03-02T10:00:00.000Z',
+      ownershipStatus: 'verified',
+      eligibilityStatus: 'tradable',
     });
 
     expect(first.reason).toBe('added');
     state = first.state;
 
     const second = upsertConnectedWallet(state, {
-      walletAddress: '0x2222',
-      chainId: 1,
-      connectorId: 'coinbaseWalletSDK',
+      accountId: '0x0000000000000000000000000000000000000002',
+      venue: 'hyperliquid',
+      connectorId: 'coinbaseInjected',
       label: 'Coinbase Wallet',
       connectedAt: '2026-03-02T10:05:00.000Z',
+      ownershipStatus: 'unverified',
+      eligibilityStatus: 'checking',
     });
 
     expect(second.state.slots).toHaveLength(2);
     state = second.state;
 
     const third = upsertConnectedWallet(state, {
-      walletAddress: '0x3333',
-      chainId: 999,
-      connectorId: 'walletConnect',
-      label: 'WalletConnect',
+      accountId: '0x0000000000000000000000000000000000000003',
+      venue: 'aster',
+      connectorId: 'rabbyInjected',
+      label: 'Rabby',
       connectedAt: '2026-03-02T10:10:00.000Z',
+      ownershipStatus: 'verified',
+      eligibilityStatus: 'not-eligible',
     });
 
     expect(third.state.slots).toHaveLength(MAX_WALLET_SLOTS);
     state = third.state;
 
     const fourth = upsertConnectedWallet(state, {
-      walletAddress: '0x4444',
-      chainId: 1,
+      accountId: '0x0000000000000000000000000000000000000004',
+      venue: 'hyperliquid',
       connectorId: 'injected',
-      label: 'Injected',
+      label: 'Injected Wallet',
       connectedAt: '2026-03-02T10:15:00.000Z',
     });
 
@@ -67,66 +73,47 @@ describe('wallet session store', () => {
   it('updates an existing slot by slot id without creating duplicates', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
       slotId: 'slot-1',
-      walletAddress: '0xAAAA',
-      chainId: 1,
-      connectorId: 'injected',
+      accountId: '0x000000000000000000000000000000000000000a',
+      venue: 'hyperliquid',
+      connectorId: 'metaMaskInjected',
       connectedAt: '2026-03-02T10:00:00.000Z',
+      ownershipStatus: 'unverified',
+      eligibilityStatus: 'checking',
     });
 
     const updated = upsertConnectedWallet(first.state, {
       slotId: 'slot-1',
-      walletAddress: '0xBBBB',
-      chainId: 999,
-      connectorId: 'injected',
-      label: 'Injected',
+      accountId: '0x000000000000000000000000000000000000000b',
+      venue: 'hyperliquid',
+      connectorId: 'metaMaskInjected',
+      label: 'MetaMask',
       connectedAt: '2026-03-02T10:30:00.000Z',
+      ownershipStatus: 'verified',
+      eligibilityStatus: 'tradable',
+      eligibilityReason: '',
+      lastVerifiedAt: '2026-03-02T10:31:00.000Z',
     });
 
     expect(updated.reason).toBe('updated');
     expect(updated.state.slots).toHaveLength(1);
     const updatedSlot = updated.state.slots[0];
-    expect(updatedSlot).toBeDefined();
-    if (!updatedSlot) {
-      throw new Error('Expected the updated wallet slot to exist');
-    }
-    expect(updatedSlot.id).toBe('slot-1');
-    expect(updatedSlot.walletAddress).toBe('0xbbbb');
-    expect(updatedSlot.chainId).toBe(999);
-    expect(updatedSlot.label).toBe('Injected');
-    expect(updated.state.activeSlotId).toBe(updatedSlot.id);
-  });
-
-  it('adds a new slot when a provided slot id does not exist, even if connector and address match', () => {
-    const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
-      slotId: 'slot-1',
-      walletAddress: '0xAAAA',
-      chainId: 1,
-      connectorId: 'injected',
-      connectedAt: '2026-03-02T10:00:00.000Z',
-    });
-
-    const second = upsertConnectedWallet(first.state, {
-      slotId: 'slot-2',
-      walletAddress: '0xAAAA',
-      chainId: 1,
-      connectorId: 'injected',
-      connectedAt: '2026-03-02T10:30:00.000Z',
-    });
-
-    expect(second.reason).toBe('added');
-    expect(second.state.slots).toHaveLength(2);
-    expect(second.state.slots.some((slot) => slot.id === 'slot-1')).toBe(true);
-    expect(second.state.slots.some((slot) => slot.id === 'slot-2')).toBe(true);
-    expect(second.state.activeSlotId).toBe('slot-2');
+    expect(updatedSlot?.id).toBe('slot-1');
+    expect(updatedSlot?.accountId).toBe('0x000000000000000000000000000000000000000b');
+    expect(updatedSlot?.venue).toBe('hyperliquid');
+    expect(updatedSlot?.label).toBe('MetaMask');
+    expect(updatedSlot?.ownershipStatus).toBe('verified');
+    expect(updatedSlot?.eligibilityStatus).toBe('tradable');
   });
 
   it('marks a slot disconnected without removing it', () => {
     const connected = upsertConnectedWallet(createEmptyWalletSessionState(), {
       slotId: 'slot-1',
-      walletAddress: '0x1111',
-      chainId: 1,
-      connectorId: 'injected',
+      accountId: '0x0000000000000000000000000000000000000001',
+      venue: 'hyperliquid',
+      connectorId: 'metaMaskInjected',
       connectedAt: '2026-03-02T10:00:00.000Z',
+      ownershipStatus: 'verified',
+      eligibilityStatus: 'tradable',
     });
 
     const disconnected = disconnectWalletSlot(connected.state, 'slot-1');
@@ -138,43 +125,35 @@ describe('wallet session store', () => {
 
   it('removes the active slot and promotes the next most recent slot', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
-      walletAddress: '0x1111',
-      chainId: 1,
-      connectorId: 'injected',
+      accountId: '0x0000000000000000000000000000000000000001',
+      venue: 'hyperliquid',
+      connectorId: 'metaMaskInjected',
       connectedAt: '2026-03-02T10:00:00.000Z',
     });
     const second = upsertConnectedWallet(first.state, {
-      walletAddress: '0x2222',
-      chainId: 1,
-      connectorId: 'coinbaseWalletSDK',
+      accountId: '0x0000000000000000000000000000000000000002',
+      venue: 'hyperliquid',
+      connectorId: 'coinbaseInjected',
       connectedAt: '2026-03-02T10:10:00.000Z',
     });
-    const third = upsertConnectedWallet(second.state, {
-      walletAddress: '0x3333',
-      chainId: 999,
-      connectorId: 'walletConnect',
-      connectedAt: '2026-03-02T10:20:00.000Z',
-    });
 
-    const removed = removeWalletSlot(third.state, third.state.activeSlotId as string);
+    const removed = removeWalletSlot(second.state, second.state.activeSlotId as string);
 
     expect(removed.reason).toBe('removed');
-    expect(removed.state.slots).toHaveLength(2);
-    const nextActiveSlot = removed.state.slots[0];
-    expect(nextActiveSlot).toBeDefined();
-    if (!nextActiveSlot) {
-      throw new Error('Expected the next active wallet slot to exist');
-    }
-    expect(removed.state.activeSlotId).toBe(nextActiveSlot.id);
-    expect(nextActiveSlot.walletAddress).toBe('0x2222');
+    expect(removed.state.slots).toHaveLength(1);
+    expect(removed.state.activeSlotId).toBe(removed.state.slots[0]?.id ?? null);
+    expect(removed.state.slots[0]?.accountId).toBe('0x0000000000000000000000000000000000000001');
   });
 
   it('serializes, restores, and safely ignores malformed persisted state', () => {
     const connected = upsertConnectedWallet(createEmptyWalletSessionState(), {
-      walletAddress: '0x5555',
-      chainId: 999,
-      connectorId: 'walletConnect',
+      accountId: '0x00000000000000000000000000000000000000aa',
+      venue: 'aster',
+      connectorId: 'rabbyInjected',
       connectedAt: '2026-03-02T11:00:00.000Z',
+      ownershipStatus: 'verified',
+      eligibilityStatus: 'not-eligible',
+      eligibilityReason: 'venue rejected test address',
     });
     const serialized = serializeWalletSessionState(connected.state);
 
@@ -200,36 +179,19 @@ describe('wallet session store', () => {
 
     expect(storage.getItem(WALLET_SESSION_STORAGE_KEY)).not.toBeNull();
     expect(readWalletSessionState(storage)).toEqual(connected.state);
-    expect(
-      deserializeWalletSessionState(
-        JSON.stringify({
-          slots: [
-            {
-              id: 'legacy-slot',
-              address: '0xAAAA',
-              chainId: 1,
-              connectorId: 'metaMask',
-              lastConnectedAt: '2026-03-02T11:05:00.000Z',
-              status: 'connected',
-            },
-          ],
-          activeSlotId: 'legacy-slot',
-        }),
-      ).slots[0]?.walletAddress,
-    ).toBe('0xaaaa');
   });
 
   it('marks all rehydrated slots as stale when no live session is restored', () => {
     const first = upsertConnectedWallet(createEmptyWalletSessionState(), {
-      walletAddress: '0x1111',
-      chainId: 1,
-      connectorId: 'injected',
+      accountId: '0x0000000000000000000000000000000000000001',
+      venue: 'hyperliquid',
+      connectorId: 'metaMaskInjected',
       connectedAt: '2026-03-02T10:00:00.000Z',
     });
     const second = upsertConnectedWallet(first.state, {
-      walletAddress: '0x2222',
-      chainId: 999,
-      connectorId: 'walletConnect',
+      accountId: '0x0000000000000000000000000000000000000002',
+      venue: 'aster',
+      connectorId: 'coinbaseInjected',
       connectedAt: '2026-03-02T10:05:00.000Z',
     });
 

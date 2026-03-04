@@ -1,27 +1,27 @@
-import type { UnsignedTxPayload } from '@dexera/shared-types';
+import type { UnsignedActionPayload } from '@dexera/shared-types';
 
 import {
   TransactionGuardrailError,
   assertClientSigningContext,
   assertPayloadMatchesActiveWallet,
-  assertUnsignedTxPayload,
+  assertUnsignedActionPayload,
 } from './transaction-guardrails';
-import type { TransactionSubmissionResult, WalletSlot } from './types';
+import type { ActionSubmissionResult, WalletSlot } from './types';
 
-export interface ClientTransactionSubmitter {
-  sendTransaction: (parameters: {
-    walletAddress: string;
-    payload: UnsignedTxPayload;
+export interface ClientActionSubmitter {
+  sendAction: (parameters: {
+    accountId: string;
+    payload: UnsignedActionPayload;
   }) => Promise<string>;
 }
 
-export async function submitUnsignedTransaction(parameters: {
+export async function submitUnsignedAction(parameters: {
   payload: unknown;
   activeWallet: WalletSlot | null;
-  submitter: ClientTransactionSubmitter;
-}): Promise<TransactionSubmissionResult> {
+  submitter: ClientActionSubmitter;
+}): Promise<ActionSubmissionResult> {
   assertClientSigningContext();
-  assertUnsignedTxPayload(parameters.payload);
+  assertUnsignedActionPayload(parameters.payload);
   assertPayloadMatchesActiveWallet(parameters.payload, parameters.activeWallet);
   const activeWallet = parameters.activeWallet;
 
@@ -29,22 +29,22 @@ export async function submitUnsignedTransaction(parameters: {
     throw new TransactionGuardrailError('missing-wallet', 'Connect a wallet before signing.');
   }
 
-  const transactionHash = await parameters.submitter.sendTransaction({
-    walletAddress: activeWallet.walletAddress,
+  const actionHash = await parameters.submitter.sendAction({
+    accountId: activeWallet.accountId,
     payload: parameters.payload,
   });
 
-  if (transactionHash.trim().length === 0) {
+  if (actionHash.trim().length === 0) {
     throw new TransactionGuardrailError(
       'signing-failed',
-      'Wallet submission returned an empty transaction hash.',
+      'Wallet submission returned an empty action hash.',
     );
   }
 
   return {
-    transactionHash,
-    unsignedTxPayloadId: parameters.payload.id,
-    walletAddress: activeWallet.walletAddress,
-    chainId: activeWallet.chainId,
+    actionHash,
+    unsignedActionPayloadId: parameters.payload.id,
+    accountId: activeWallet.accountId,
+    venue: activeWallet.venue,
   };
 }

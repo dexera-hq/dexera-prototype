@@ -22,14 +22,14 @@ describe('workspace layout serialization', () => {
           kind: 'overview',
           label: 'A',
           size: 'full',
-          config: { stats: { gamma: 3, alpha: 1 }, mode: 'spot' },
+          config: { stats: { gamma: 3, alpha: 1 }, mode: 'perp' },
         },
       ],
     };
 
     const serialized = serializeWorkspaceLayout(workspaceState);
     expect(serialized).toBe(
-      '{"version":1,"nextModuleId":3,"layout":[2,1],"blocks":[{"id":1,"kind":"overview","label":"A","size":"full","config":{"mode":"spot","stats":{"alpha":1,"gamma":3}}},{"id":2,"kind":"custom","label":"B","size":"normal","config":{"a":1,"nested":{"x":false,"y":true},"z":2}}]}',
+      '{"version":1,"nextModuleId":3,"layout":[2,1],"blocks":[{"id":1,"kind":"overview","label":"A","size":"full","config":{"mode":"perp","stats":{"alpha":1,"gamma":3}}},{"id":2,"kind":"custom","label":"B","size":"normal","config":{"a":1,"nested":{"x":false,"y":true},"z":2}}]}',
     );
   });
 

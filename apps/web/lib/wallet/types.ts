@@ -1,8 +1,20 @@
-import type { ChainId, Wallet } from '@dexera/shared-types';
+import type { VenueId, Wallet } from '@dexera/shared-types';
 
 export type WalletSlotStatus = 'connected' | 'disconnected' | 'stale';
+export type WalletOwnershipStatus = 'unverified' | 'verified' | 'failed';
+export type WalletEligibilityStatus =
+  | 'unknown'
+  | 'checking'
+  | 'tradable'
+  | 'not-eligible'
+  | 'error';
 
-export const WALLET_CONNECTOR_IDS = ['injected', 'coinbaseWalletSDK', 'walletConnect'] as const;
+export const WALLET_CONNECTOR_IDS = [
+  'metaMaskInjected',
+  'coinbaseInjected',
+  'rabbyInjected',
+  'injected',
+] as const;
 export type WalletConnectorId = (typeof WALLET_CONNECTOR_IDS)[number];
 
 export type WalletConnectorUnavailableReason = 'connector-in-use' | 'connector-disabled';
@@ -13,6 +25,10 @@ export interface WalletSlot extends Wallet {
   label?: string;
   lastConnectedAt: string;
   status: WalletSlotStatus;
+  ownershipStatus: WalletOwnershipStatus;
+  eligibilityStatus: WalletEligibilityStatus;
+  eligibilityReason?: string;
+  lastVerifiedAt?: string;
 }
 
 export interface WalletSessionState {
@@ -25,6 +41,10 @@ export interface ConnectedWalletPayload extends Wallet {
   connectorId: WalletConnectorId;
   label?: string;
   connectedAt?: string;
+  ownershipStatus?: WalletOwnershipStatus;
+  eligibilityStatus?: WalletEligibilityStatus;
+  eligibilityReason?: string;
+  lastVerifiedAt?: string;
 }
 
 export interface WalletConnectorOption {
@@ -34,11 +54,11 @@ export interface WalletConnectorOption {
   unavailableReason?: WalletConnectorUnavailableReason;
 }
 
-export interface TransactionSubmissionResult {
-  transactionHash: string;
-  unsignedTxPayloadId: string;
-  walletAddress: string;
-  chainId: ChainId;
+export interface ActionSubmissionResult {
+  actionHash: string;
+  unsignedActionPayloadId: string;
+  accountId: string;
+  venue: VenueId;
 }
 
 export type ConnectWalletReason =
@@ -47,7 +67,8 @@ export type ConnectWalletReason =
   | 'unavailable'
   | 'failed'
   | 'connector-in-use'
-  | 'connector-missing';
+  | 'connector-missing'
+  | 'verification-failed';
 
 export type WalletStateChangeReason =
   | 'added'
@@ -64,7 +85,8 @@ export type WalletStateChangeReason =
   | 'no-live-session'
   | 'reconnected'
   | 'connector-in-use'
-  | 'connector-missing';
+  | 'connector-missing'
+  | 'verification-updated';
 
 export interface WalletStateResult {
   state: WalletSessionState;
@@ -85,10 +107,24 @@ export interface WalletManagerApi {
   canAddWallet: boolean;
   hasHydrated: boolean;
   getConnectorOptions: () => WalletConnectorOption[];
-  connectNewSlot: (connectorId: WalletConnectorId) => Promise<ConnectWalletResult>;
+  connectNewSlot: (connectorId: WalletConnectorId, venue: VenueId) => Promise<ConnectWalletResult>;
   reconnectSlot: (slotId: string) => Promise<ConnectWalletResult>;
   setActiveSlot: (slotId: string) => WalletStateResult;
   disconnectSlot: (slotId: string) => Promise<WalletStateResult>;
   removeSlot: (slotId: string) => WalletStateResult;
   clearAllSlots: () => WalletStateResult;
+}
+
+export function isWalletSlotTradable(
+  slot: Pick<WalletSlot, 'status' | 'ownershipStatus' | 'eligibilityStatus'> | null | undefined,
+): boolean {
+  if (!slot) {
+    return false;
+  }
+
+  return (
+    slot.status === 'connected' &&
+    slot.ownershipStatus === 'verified' &&
+    slot.eligibilityStatus === 'tradable'
+  );
 }

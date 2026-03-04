@@ -6,12 +6,14 @@ import { getConnectorOptions } from '../lib/wallet/wallet-manager-logic';
 function createSlot(overrides: Partial<WalletSlot>): WalletSlot {
   return {
     id: 'slot-default',
-    walletAddress: '0x1111',
-    chainId: 1,
-    connectorId: 'injected',
-    label: 'Injected',
+    accountId: '0x0000000000000000000000000000000000000002',
+    venue: 'hyperliquid',
+    connectorId: 'metaMaskInjected',
+    label: 'MetaMask',
     lastConnectedAt: '2026-03-02T10:00:00.000Z',
     status: 'connected',
+    ownershipStatus: 'verified',
+    eligibilityStatus: 'tradable',
     ...overrides,
   };
 }
@@ -19,14 +21,14 @@ function createSlot(overrides: Partial<WalletSlot>): WalletSlot {
 describe('wallet runtime isolation rules', () => {
   it('prevents opening a second live slot on a connector already in use', () => {
     const slots: WalletSlot[] = [
-      createSlot({ id: 'slot-a', connectorId: 'injected', status: 'connected' }),
+      createSlot({ id: 'slot-a', connectorId: 'metaMaskInjected', status: 'connected' }),
     ];
 
-    const options = getConnectorOptions({ slots, walletConnectEnabled: true });
+    const options = getConnectorOptions({ slots, runtimeEnabled: true });
 
-    expect(options.find((option) => option.id === 'injected')).toEqual({
-      id: 'injected',
-      label: 'Injected',
+    expect(options.find((option) => option.id === 'metaMaskInjected')).toEqual({
+      id: 'metaMaskInjected',
+      label: 'MetaMask',
       available: false,
       unavailableReason: 'connector-in-use',
     });
@@ -34,17 +36,22 @@ describe('wallet runtime isolation rules', () => {
 
   it('allows reconnecting a disconnected slot when no other live slot owns its connector', () => {
     const slots: WalletSlot[] = [
-      createSlot({ id: 'slot-a', connectorId: 'injected', status: 'disconnected' }),
-      createSlot({ id: 'slot-b', connectorId: 'coinbaseWalletSDK', status: 'connected' }),
+      createSlot({ id: 'slot-a', connectorId: 'metaMaskInjected', status: 'disconnected' }),
+      createSlot({
+        id: 'slot-b',
+        connectorId: 'coinbaseInjected',
+        venue: 'aster',
+        status: 'connected',
+      }),
     ];
 
     const options = getConnectorOptions({
       slots,
-      walletConnectEnabled: true,
+      runtimeEnabled: true,
       activeSlotId: 'slot-a',
     });
 
-    expect(options.find((option) => option.id === 'injected')?.available).toBe(true);
-    expect(options.find((option) => option.id === 'coinbaseWalletSDK')?.available).toBe(false);
+    expect(options.find((option) => option.id === 'metaMaskInjected')?.available).toBe(true);
+    expect(options.find((option) => option.id === 'coinbaseInjected')?.available).toBe(false);
   });
 });

@@ -1,24 +1,24 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Balance, SpotPrice, TokenMetadata } from '@/lib/market-data/types';
+import type { InstrumentMetadata, MarkPrice, PerpPosition } from '@/lib/market-data/types';
 
 type ErrorPayload = {
   error?: string;
 };
 
 export type WorkspaceMarketDataState = {
-  tokens: TokenMetadata[];
-  prices: Record<string, SpotPrice>;
-  balances: Balance[];
+  instruments: InstrumentMetadata[];
+  marks: Record<string, MarkPrice>;
+  positions: PerpPosition[];
   loading: boolean;
   error: string | null;
 };
 
 const INITIAL_MARKET_DATA_STATE: WorkspaceMarketDataState = {
-  tokens: [],
-  prices: {},
-  balances: [],
+  instruments: [],
+  marks: {},
+  positions: [],
   loading: true,
   error: null,
 };
@@ -51,15 +51,15 @@ export function useWorkspaceMarketData(): WorkspaceMarketDataState {
     async function loadMarketData(): Promise<void> {
       setMarketData((current) => ({ ...current, loading: true, error: null }));
       try {
-        const [tokens, prices, balances] = await Promise.all([
-          fetch('/api/mock/tokens', { signal: abortController.signal }).then((response) =>
-            decodeJSON<TokenMetadata[]>(response),
+        const [instruments, marks, positions] = await Promise.all([
+          fetch('/api/mock/instruments', { signal: abortController.signal }).then((response) =>
+            decodeJSON<InstrumentMetadata[]>(response),
           ),
-          fetch('/api/mock/prices', { signal: abortController.signal }).then((response) =>
-            decodeJSON<Record<string, SpotPrice>>(response),
+          fetch('/api/mock/marks', { signal: abortController.signal }).then((response) =>
+            decodeJSON<Record<string, MarkPrice>>(response),
           ),
-          fetch('/api/mock/balances', { signal: abortController.signal }).then((response) =>
-            decodeJSON<Balance[]>(response),
+          fetch('/api/mock/positions', { signal: abortController.signal }).then((response) =>
+            decodeJSON<PerpPosition[]>(response),
           ),
         ]);
 
@@ -68,9 +68,9 @@ export function useWorkspaceMarketData(): WorkspaceMarketDataState {
         }
 
         setMarketData({
-          tokens,
-          prices,
-          balances,
+          instruments,
+          marks,
+          positions,
           loading: false,
           error: null,
         });
