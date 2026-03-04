@@ -325,10 +325,12 @@ func walletVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := parseVenue(string(req.Venue)); err != nil {
+	venue, err := parseVenue(string(req.Venue))
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	req.Venue = venue
 
 	challenge, err := walletChallenges.consume(challengeID, address)
 	if err != nil {
@@ -392,6 +394,12 @@ func perpOrderPreviewHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	venue, err := parseVenue(string(req.Order.Venue))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.Order.Venue = venue
 
 	adapter, err := venueAdapterResolver(req.Order.Venue)
 	if err != nil {
@@ -423,6 +431,12 @@ func buildUnsignedActionHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	venue, err := parseVenue(string(req.Order.Venue))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.Order.Venue = venue
 
 	adapter, err := venueAdapterResolver(req.Order.Venue)
 	if err != nil {

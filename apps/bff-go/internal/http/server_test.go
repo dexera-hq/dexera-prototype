@@ -191,6 +191,74 @@ func TestWalletVerifyRejectsReusedChallenge(t *testing.T) {
 	}
 }
 
+func TestWalletVerifyNormalizesVenueForAdapterResolution(t *testing.T) {
+	previousChallenges := walletChallenges
+	walletChallenges = newWalletChallengeStore(func() time.Time {
+		return time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	})
+	previousResolver := venueAdapterResolver
+	venueAdapterResolver = func(venue venueID) (perpVenueAdapter, error) {
+		if venue != venueAster {
+			t.Fatalf("expected normalized venueAster, got %s", venue)
+		}
+		return fakeVenueAdapter{
+			eligibilityResp: walletVenueEligibilityResult{
+				Eligible: true,
+				Source:   "",
+			},
+		}, nil
+	}
+	defer func() {
+		walletChallenges = previousChallenges
+		venueAdapterResolver = previousResolver
+	}()
+
+	address := "0x0000000000000000000000000000000000000002"
+	challengeReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/wallet/challenge",
+		bytes.NewBufferString(`{"address":"`+address+`"}`),
+	)
+	challengeReq.Header.Set("Content-Type", "application/json")
+	challengeRes := httptest.NewRecorder()
+	NewMux().ServeHTTP(challengeRes, challengeReq)
+
+	var challengeBody map[string]any
+	if err := json.Unmarshal(challengeRes.Body.Bytes(), &challengeBody); err != nil {
+		t.Fatalf("expected valid challenge response JSON: %v", err)
+	}
+
+	challengeID, _ := challengeBody["challengeId"].(string)
+	verifyReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/wallet/verify",
+		bytes.NewBufferString(`{
+			"address":"`+address+`",
+			"challengeId":"`+challengeID+`",
+			"signature":"0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b",
+			"venue":"ASTER"
+		}`),
+	)
+	verifyReq.Header.Set("Content-Type", "application/json")
+	verifyRes := httptest.NewRecorder()
+	NewMux().ServeHTTP(verifyRes, verifyReq)
+
+	if verifyRes.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d with body %s", verifyRes.Code, verifyRes.Body.String())
+	}
+
+	var verifyBody map[string]any
+	if err := json.Unmarshal(verifyRes.Body.Bytes(), &verifyBody); err != nil {
+		t.Fatalf("expected valid verify response JSON: %v", err)
+	}
+	if verifyBody["venue"] != "aster" {
+		t.Fatalf("expected normalized venue=aster, got %v", verifyBody["venue"])
+	}
+	if verifyBody["source"] != "aster" {
+		t.Fatalf("expected normalized source=aster, got %v", verifyBody["source"])
+	}
+}
+
 func TestPlaceholderHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/placeholder", nil)
 	rr := httptest.NewRecorder()
@@ -237,6 +305,30 @@ func TestPerpOrderPreviewAsterMock(t *testing.T) {
 	}
 }
 
+func TestPerpOrderPreviewNormalizesVenueForAdapterResolution(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/orders/preview",
+		validBuildUnsignedActionBody("ASTER"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d with body %s", rr.Code, rr.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected valid JSON body: %v", err)
+	}
+	if body["venue"] != "aster" {
+		t.Fatalf("expected normalized venue=aster, got %v", body["venue"])
+	}
+}
+
 func TestBuildUnsignedActionAsterMock(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -274,6 +366,34 @@ func TestBuildUnsignedActionAsterMock(t *testing.T) {
 	}
 	if unsignedPayload["kind"] != "perp_order_action" {
 		t.Fatalf("expected kind=perp_order_action, got %v", unsignedPayload["kind"])
+	}
+}
+
+func TestBuildUnsignedActionNormalizesVenueForAdapterResolution(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/actions/unsigned",
+		validBuildUnsignedActionBody("ASTER"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected valid JSON body: %v", err)
+	}
+	unsignedPayload, ok := body["unsignedActionPayload"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected unsignedActionPayload object, got %T", body["unsignedActionPayload"])
+	}
+	if unsignedPayload["venue"] != "aster" {
+		t.Fatalf("expected normalized venue=aster, got %v", unsignedPayload["venue"])
 	}
 }
 
