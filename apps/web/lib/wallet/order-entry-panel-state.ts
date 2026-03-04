@@ -9,9 +9,21 @@ type ResolveLimitPriceAutofillParameters = {
   lastSyncedInstrument: string;
 };
 
-export function collectOrderEntryInstruments(instruments: InstrumentMetadata[]): string[] {
+export function collectOrderEntryInstruments(
+  instruments: InstrumentMetadata[],
+  venue: string,
+): string[] {
+  const normalizedVenue = venue.trim().toLowerCase();
+  if (normalizedVenue.length === 0) {
+    return [];
+  }
+
   const set = new Set<string>();
   for (const instrument of instruments) {
+    if (instrument.venue.trim().toLowerCase() !== normalizedVenue) {
+      continue;
+    }
+
     set.add(instrument.instrument.toUpperCase());
   }
 

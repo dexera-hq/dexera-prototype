@@ -96,8 +96,8 @@ export function OrderEntryPanel({ marketData }: { marketData: WorkspaceMarketDat
   const lastSyncedLimitInstrumentRef = useRef<string>(draft.instrument);
 
   const venueInstruments = useMemo(
-    () => collectOrderEntryInstruments(marketData.instruments),
-    [marketData.instruments],
+    () => collectOrderEntryInstruments(marketData.instruments, draft.venue),
+    [marketData.instruments, draft.venue],
   );
 
   useEffect(() => {

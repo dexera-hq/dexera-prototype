@@ -6,8 +6,8 @@ import {
 } from '../lib/wallet/order-entry-panel-state';
 
 describe('order entry panel state helpers', () => {
-  it('collects all loaded instruments without venue filtering', () => {
-    const instruments = collectOrderEntryInstruments([
+  it('collects deduplicated instruments for the selected venue', () => {
+    const loadedInstruments = [
       {
         instrument: 'btc-perp',
         name: 'Bitcoin Perpetual',
@@ -23,9 +23,14 @@ describe('order entry panel state helpers', () => {
         name: 'Bitcoin Perpetual Duplicate',
         venue: 'aster',
       },
-    ]);
+    ];
 
-    expect(instruments).toEqual(['BTC-PERP', 'ETH-PERP']);
+    expect(collectOrderEntryInstruments(loadedInstruments, 'hyperliquid')).toEqual(['BTC-PERP']);
+    expect(collectOrderEntryInstruments(loadedInstruments, 'ASTER')).toEqual([
+      'ETH-PERP',
+      'BTC-PERP',
+    ]);
+    expect(collectOrderEntryInstruments(loadedInstruments, 'unknown-venue')).toEqual([]);
   });
 
   it('autofills from mark price when limit price is missing', () => {
