@@ -261,11 +261,6 @@ export function useWorkspaceModules() {
   };
 
   const clearDragState = () => {
-    const sourceId = dragSourceIdRef.current;
-    const targetId = dropTargetIdRef.current;
-    if (sourceId !== null && targetId !== null && sourceId !== targetId) {
-      setModules((currentModules) => moveModule(currentModules, sourceId, targetId));
-    }
     dragSourceIdRef.current = null;
     dropTargetIdRef.current = null;
     setDraggingId(null);
