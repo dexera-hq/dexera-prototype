@@ -269,6 +269,9 @@ describe('multi-session runtime wallet connections', () => {
       if (method === 'eth_requestAccounts') {
         return ['0xabc123'];
       }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
       if (method === 'wallet_perp_submitAction') {
         return '0xactionhash';
       }
@@ -303,6 +306,58 @@ describe('multi-session runtime wallet connections', () => {
 
     expect(actionHash).toBe('0xactionhash');
     expect(request).toHaveBeenCalledWith({
+      method: 'wallet_perp_submitAction',
+      params: [{ payloadId: 'uap_1' }],
+    });
+  });
+
+  it('fails action submission when provider selected account does not match the selected slot account', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xdef456'];
+      }
+      if (method === 'wallet_perp_submitAction') {
+        return '0xactionhash';
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    await expect(
+      signAndSubmitRuntimeSlotAction({
+        slotId: 'slot-g',
+        accountId: '0xabc123',
+        payload: {
+          id: 'uap_1',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            instrument: 'BTC-PERP',
+          },
+          walletRequest: {
+            method: 'wallet_perp_submitAction',
+            params: [{ payloadId: 'uap_1' }],
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Wallet selected account 0xdef456 does not match expected account 0xabc123. Switch wallet account and retry.',
+    );
+    expect(request).not.toHaveBeenCalledWith({
       method: 'wallet_perp_submitAction',
       params: [{ payloadId: 'uap_1' }],
     });
@@ -716,6 +771,9 @@ describe('multi-session runtime wallet connections', () => {
       if (method === 'eth_requestAccounts') {
         return ['0xabc123'];
       }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
       if (method === 'wallet_perp_submitAction') {
         return { txHash: '0xobjecthash' };
       }
@@ -757,6 +815,9 @@ describe('multi-session runtime wallet connections', () => {
         return [{ parentCapability: 'eth_accounts' }];
       }
       if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
         return ['0xabc123'];
       }
       if (method === 'wallet_perp_submitAction') {

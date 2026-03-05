@@ -993,6 +993,7 @@ export async function signAndSubmitRuntimeSlotAction(parameters: {
     throw new Error('Unsigned action payload wallet request method is required.');
   }
 
+  await ensureProviderAccountMatches(runtime.provider, parameters.accountId);
   const response = await requestActionSubmission(runtime.provider, method, walletRequest.params);
   const actionHash = extractActionHash(response);
   if (!actionHash) {
