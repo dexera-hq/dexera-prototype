@@ -30,6 +30,10 @@ describe('transaction guardrails', () => {
         instrument: 'BTC-PERP',
         side: 'buy',
       },
+      walletRequest: {
+        method: 'wallet_perp_submitAction',
+        params: [{ payloadId: 'uap_1' }],
+      },
     });
 
     expect(result.ok).toBe(true);
@@ -43,6 +47,9 @@ describe('transaction guardrails', () => {
       kind: 'perp_order_action',
       action: {
         instrument: 'BTC-PERP',
+      },
+      walletRequest: {
+        method: 'wallet_perp_submitAction',
       },
       actionHash: '0xabc',
     });
@@ -65,6 +72,9 @@ describe('transaction guardrails', () => {
           action: {
             instrument: 'BTC-PERP',
           },
+          walletRequest: {
+            method: 'wallet_perp_submitAction',
+          },
         },
         activeWallet,
       ),
@@ -81,6 +91,7 @@ describe('transaction guardrails', () => {
 
     try {
       const result = await submitUnsignedAction({
+        orderId: 'ord_1',
         payload: {
           id: 'uap_1',
           accountId: '0x0000000000000000000000000000000000000001',
@@ -89,13 +100,19 @@ describe('transaction guardrails', () => {
           action: {
             instrument: 'BTC-PERP',
           },
+          walletRequest: {
+            method: 'wallet_perp_submitAction',
+          },
         },
         activeWallet,
         submitter: {
-          sendAction: async () => 'action_hash_1',
+          sendAction: async () => ({
+            actionHash: 'action_hash_1',
+          }),
         },
       });
 
+      expect(result.orderId).toBe('ord_1');
       expect(result.actionHash).toBe('action_hash_1');
       expect(result.accountId).toBe(activeWallet.accountId);
     } finally {
@@ -121,9 +138,30 @@ describe('transaction guardrails', () => {
           action: {
             instrument: 'BTC-PERP',
           },
+          walletRequest: {
+            method: 'wallet_perp_submitAction',
+          },
         },
         activeWallet,
       ),
     ).toThrow(TransactionGuardrailError);
+  });
+
+  it('rejects payloads that omit wallet request metadata', () => {
+    const result = validateUnsignedActionPayload({
+      id: 'uap_1',
+      accountId: '0x0000000000000000000000000000000000000001',
+      venue: 'hyperliquid',
+      kind: 'perp_order_action',
+      action: {
+        instrument: 'BTC-PERP',
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error('Expected validation to fail');
+    }
+    expect(result.error.code).toBe('invalid-payload');
   });
 });

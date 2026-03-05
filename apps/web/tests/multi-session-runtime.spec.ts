@@ -4,13 +4,26 @@ import {
   clearRuntimeSlots,
   connectRuntimeSlot,
   reconnectRuntimeSlot,
+  signAndSubmitRuntimeSlotAction,
+  signRuntimeSlotActionPayload,
   signRuntimeSlotMessage,
   watchRuntimeSlotAccount,
 } from '../lib/wallet/multi-session-runtime';
 
-const RUNTIME_TEST_SLOT_IDS = ['slot-a', 'slot-b', 'slot-c', 'slot-d', 'slot-e', 'slot-f'] as const;
+const RUNTIME_TEST_SLOT_IDS = [
+  'slot-a',
+  'slot-b',
+  'slot-c',
+  'slot-d',
+  'slot-e',
+  'slot-f',
+  'slot-g',
+  'slot-h',
+  'slot-i',
+] as const;
 const runtimeGlobal = globalThis as unknown as { window?: unknown };
 const originalWindow = runtimeGlobal.window;
+const originalHyperliquidSigningRPCURL = process.env.NEXT_PUBLIC_HYPERLIQUID_SIGNING_CHAIN_RPC_URL;
 
 function setRuntimeWindow(value: unknown): void {
   runtimeGlobal.window = value;
@@ -53,6 +66,12 @@ function createEventfulProvider(requestImpl: RuntimeRequest): {
 afterEach(async () => {
   await clearRuntimeSlots(RUNTIME_TEST_SLOT_IDS);
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  if (originalHyperliquidSigningRPCURL === undefined) {
+    delete process.env.NEXT_PUBLIC_HYPERLIQUID_SIGNING_CHAIN_RPC_URL;
+  } else {
+    process.env.NEXT_PUBLIC_HYPERLIQUID_SIGNING_CHAIN_RPC_URL = originalHyperliquidSigningRPCURL;
+  }
 
   if (originalWindow === undefined) {
     delete runtimeGlobal.window;
@@ -240,6 +259,600 @@ describe('multi-session runtime wallet connections', () => {
       method: 'personal_sign',
       params: ['Sign me', '0xabc123'],
     });
+  });
+
+  it('submits runtime slot actions through the wallet request envelope', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'wallet_perp_submitAction') {
+        return '0xactionhash';
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    const actionHash = await signAndSubmitRuntimeSlotAction({
+      slotId: 'slot-g',
+      accountId: '0xabc123',
+      payload: {
+        id: 'uap_1',
+        accountId: '0xabc123',
+        venue: 'hyperliquid',
+        kind: 'perp_order_action',
+        action: {
+          instrument: 'BTC-PERP',
+        },
+        walletRequest: {
+          method: 'wallet_perp_submitAction',
+          params: [{ payloadId: 'uap_1' }],
+        },
+      },
+    });
+
+    expect(actionHash).toBe('0xactionhash');
+    expect(request).toHaveBeenCalledWith({
+      method: 'wallet_perp_submitAction',
+      params: [{ payloadId: 'uap_1' }],
+    });
+  });
+
+  it('fails action submission when provider selected account does not match the selected slot account', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xdef456'];
+      }
+      if (method === 'wallet_perp_submitAction') {
+        return '0xactionhash';
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    await expect(
+      signAndSubmitRuntimeSlotAction({
+        slotId: 'slot-g',
+        accountId: '0xabc123',
+        payload: {
+          id: 'uap_1',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            instrument: 'BTC-PERP',
+          },
+          walletRequest: {
+            method: 'wallet_perp_submitAction',
+            params: [{ payloadId: 'uap_1' }],
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Wallet selected account 0xdef456 does not match expected account 0xabc123. Switch wallet account and retry.',
+    );
+    expect(request).not.toHaveBeenCalledWith({
+      method: 'wallet_perp_submitAction',
+      params: [{ payloadId: 'uap_1' }],
+    });
+  });
+
+  it('signs action payloads through wallet typed-data requests', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_signTypedData_v4') {
+        return '0x' + '22'.repeat(65);
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    const signature = await signRuntimeSlotActionPayload({
+      slotId: 'slot-g',
+      accountId: '0xabc123',
+      payload: {
+        id: 'uap_hl_typed_1',
+        accountId: '0xabc123',
+        venue: 'hyperliquid',
+        kind: 'perp_order_action',
+        action: {
+          action: {
+            type: 'order',
+          },
+          nonce: 1733000000000,
+        },
+        walletRequest: {
+          method: 'eth_signTypedData_v4',
+          params: ['0xabc123', '{"types":{}}'],
+        },
+      },
+    });
+
+    expect(signature).toBe('0x' + '22'.repeat(65));
+    expect(request).toHaveBeenCalledWith({
+      method: 'eth_signTypedData_v4',
+      params: ['0xabc123', '{"types":{}}'],
+    });
+  });
+
+  it('switches wallet chain before hyperliquid typed-data signing', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_chainId') {
+        return '0x66eee';
+      }
+      if (method === 'wallet_switchEthereumChain') {
+        return null;
+      }
+      if (method === 'eth_signTypedData_v4') {
+        return '0x' + '23'.repeat(65);
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    const signature = await signRuntimeSlotActionPayload({
+      slotId: 'slot-g',
+      accountId: '0xabc123',
+      payload: {
+        id: 'uap_hl_typed_2',
+        accountId: '0xabc123',
+        venue: 'hyperliquid',
+        kind: 'perp_order_action',
+        action: {
+          action: {
+            type: 'order',
+          },
+          nonce: 1733000000001,
+        },
+        walletRequest: {
+          method: 'eth_signTypedData_v4',
+          params: ['0xabc123', '{"domain":{"chainId":1337},"types":{}}'],
+        },
+      },
+    });
+
+    expect(signature).toBe('0x' + '23'.repeat(65));
+    expect(request).toHaveBeenCalledWith({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: '0x539' }],
+    });
+  });
+
+  it('fails when wallet account changes during signing chain switch', async () => {
+    let accountCalls = 0;
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        accountCalls += 1;
+        return accountCalls === 1 ? ['0xabc123'] : ['0xdef456'];
+      }
+      if (method === 'eth_chainId') {
+        return '0x66eee';
+      }
+      if (method === 'wallet_switchEthereumChain') {
+        return null;
+      }
+      if (method === 'eth_signTypedData_v4') {
+        return '0x' + '99'.repeat(65);
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    await expect(
+      signRuntimeSlotActionPayload({
+        slotId: 'slot-g',
+        accountId: '0xabc123',
+        payload: {
+          id: 'uap_hl_typed_switch_account',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            action: {
+              type: 'order',
+            },
+            nonce: 1733000000009,
+          },
+          walletRequest: {
+            method: 'eth_signTypedData_v4',
+            params: ['0xabc123', '{"domain":{"chainId":1337},"types":{}}'],
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Wallet selected account 0xdef456 does not match expected account 0xabc123. Switch wallet account and retry.',
+    );
+  });
+
+  it('adds missing chain through configured rpc and retries switch before signing', async () => {
+    process.env.NEXT_PUBLIC_HYPERLIQUID_SIGNING_CHAIN_RPC_URL = 'http://127.0.0.1:8545';
+    let switchAttempts = 0;
+    const request = vi
+      .fn()
+      .mockImplementation(async ({ method, params }: { method: string; params?: unknown[] }) => {
+        if (method === 'wallet_requestPermissions') {
+          return [{ parentCapability: 'eth_accounts' }];
+        }
+        if (method === 'eth_requestAccounts') {
+          return ['0xabc123'];
+        }
+        if (method === 'eth_accounts') {
+          return ['0xabc123'];
+        }
+        if (method === 'eth_chainId') {
+          return '0x66eee';
+        }
+        if (method === 'wallet_switchEthereumChain') {
+          switchAttempts += 1;
+          if (switchAttempts === 1) {
+            throw Object.assign(new Error('Unrecognized chain ID "0x539".'), { code: 4902 });
+          }
+          return null;
+        }
+        if (method === 'wallet_addEthereumChain') {
+          expect(params).toEqual([
+            {
+              chainId: '0x539',
+              chainName: 'Anvil 1337',
+              nativeCurrency: {
+                name: 'Ether',
+                symbol: 'ETH',
+                decimals: 18,
+              },
+              rpcUrls: ['http://127.0.0.1:8545'],
+            },
+          ]);
+          return null;
+        }
+        if (method === 'eth_signTypedData_v4') {
+          return '0x' + '24'.repeat(65);
+        }
+        return [];
+      });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    const signature = await signRuntimeSlotActionPayload({
+      slotId: 'slot-g',
+      accountId: '0xabc123',
+      payload: {
+        id: 'uap_hl_typed_3',
+        accountId: '0xabc123',
+        venue: 'hyperliquid',
+        kind: 'perp_order_action',
+        action: {
+          action: {
+            type: 'order',
+          },
+          nonce: 1733000000002,
+        },
+        walletRequest: {
+          method: 'eth_signTypedData_v4',
+          params: ['0xabc123', '{"domain":{"chainId":1337},"types":{}}'],
+        },
+      },
+    });
+
+    expect(signature).toBe('0x' + '24'.repeat(65));
+    expect(switchAttempts).toBe(2);
+  });
+
+  it('fails clearly when signing chain is missing and rpc url is not configured', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_chainId') {
+        return '0x66eee';
+      }
+      if (method === 'wallet_switchEthereumChain') {
+        throw Object.assign(new Error('Unrecognized chain ID "0x539".'), { code: 4902 });
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    await expect(
+      signRuntimeSlotActionPayload({
+        slotId: 'slot-g',
+        accountId: '0xabc123',
+        payload: {
+          id: 'uap_hl_typed_4',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            action: {
+              type: 'order',
+            },
+            nonce: 1733000000003,
+          },
+          walletRequest: {
+            method: 'eth_signTypedData_v4',
+            params: ['0xabc123', '{"domain":{"chainId":1337},"types":{}}'],
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Wallet does not have chain 1337 (0x539) configured. Set NEXT_PUBLIC_HYPERLIQUID_SIGNING_CHAIN_RPC_URL and retry.',
+    );
+  });
+
+  it('fails when typed-data signer account does not match the selected slot account', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    await expect(
+      signRuntimeSlotActionPayload({
+        slotId: 'slot-g',
+        accountId: '0xabc123',
+        payload: {
+          id: 'uap_hl_typed_5',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            action: {
+              type: 'order',
+            },
+            nonce: 1733000000004,
+          },
+          walletRequest: {
+            method: 'eth_signTypedData_v4',
+            params: ['0xdef456', '{"domain":{"chainId":1337},"types":{}}'],
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Unsigned action payload signer account does not match the selected account.',
+    );
+  });
+
+  it('fails when provider selected account does not match the selected slot account', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xdef456'];
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    await expect(
+      signRuntimeSlotActionPayload({
+        slotId: 'slot-g',
+        accountId: '0xabc123',
+        payload: {
+          id: 'uap_hl_typed_6',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            action: {
+              type: 'order',
+            },
+            nonce: 1733000000005,
+          },
+          walletRequest: {
+            method: 'eth_signTypedData_v4',
+            params: ['0xabc123', '{"domain":{"chainId":1337},"types":{}}'],
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Wallet selected account 0xdef456 does not match expected account 0xabc123. Switch wallet account and retry.',
+    );
+  });
+
+  it('extracts action hash from object wallet responses', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'wallet_perp_submitAction') {
+        return { txHash: '0xobjecthash' };
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-h', 'metaMaskInjected');
+
+    const actionHash = await signAndSubmitRuntimeSlotAction({
+      slotId: 'slot-h',
+      accountId: '0xabc123',
+      payload: {
+        id: 'uap_2',
+        accountId: '0xabc123',
+        venue: 'hyperliquid',
+        kind: 'perp_order_action',
+        action: {
+          instrument: 'ETH-PERP',
+        },
+        walletRequest: {
+          method: 'wallet_perp_submitAction',
+          params: [{ payloadId: 'uap_2' }],
+        },
+      },
+    });
+
+    expect(actionHash).toBe('0xobjecthash');
+  });
+
+  it('fails when wallet submission response does not include an action hash', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'wallet_perp_submitAction') {
+        return {};
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-i', 'metaMaskInjected');
+
+    await expect(
+      signAndSubmitRuntimeSlotAction({
+        slotId: 'slot-i',
+        accountId: '0xabc123',
+        payload: {
+          id: 'uap_3',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            instrument: 'SOL-PERP',
+          },
+          walletRequest: {
+            method: 'wallet_perp_submitAction',
+            params: [{ payloadId: 'uap_3' }],
+          },
+        },
+      }),
+    ).rejects.toThrow('Wallet submission did not return an action hash.');
   });
 
   it('propagates provider lifecycle events to slot account watchers', async () => {

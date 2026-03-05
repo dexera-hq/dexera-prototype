@@ -568,6 +568,42 @@ async function requestSignature(
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeComparableAccountId(candidate: string): string {
+  const trimmed = candidate.trim();
+  return trimmed.startsWith('0x') ? trimmed.toLowerCase() : trimmed;
+}
+
+function readRequestedSignerAccount(params: readonly unknown[]): string | null {
+  if (params.length === 0) {
+    return null;
+  }
+  const candidate = params[0];
+  if (typeof candidate !== 'string') {
+    return null;
+  }
+  const trimmed = candidate.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function ensureProviderAccountMatches(
+  provider: BrowserWalletProvider,
+  expectedAccountId: string,
+): Promise<void> {
+  const activeAccountId = await requestAccountId(provider, 'eth_accounts');
+  if (!activeAccountId) {
+    throw new Error('No active account is currently selected in wallet.');
+  }
+
+  if (
+    normalizeComparableAccountId(activeAccountId) !==
+    normalizeComparableAccountId(expectedAccountId)
+  ) {
+    throw new Error(
+      `Wallet selected account ${activeAccountId} does not match expected account ${expectedAccountId}. Switch wallet account and retry.`,
+    );
+  }
+}
+
 function normalizeSignature(signature: string): string {
   const trimmed = signature.trim();
   if (!trimmed) {
@@ -575,6 +611,171 @@ function normalizeSignature(signature: string): string {
   }
 
   return trimmed;
+}
+
+function resolveHyperliquidSigningRpcURL(): string | null {
+  const rawValue = process.env.NEXT_PUBLIC_HYPERLIQUID_SIGNING_CHAIN_RPC_URL;
+  if (typeof rawValue !== 'string') {
+    return null;
+  }
+
+  const trimmed = rawValue.trim();
+  if (trimmed.toLowerCase() === 'undefined' || trimmed.toLowerCase() === 'null') {
+    return null;
+  }
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function isHyperliquidTypedDataSigningMethod(method: string): boolean {
+  return method.trim().toLowerCase() === 'eth_signtypeddata_v4';
+}
+
+function normalizeHexChainID(candidate: unknown): string | null {
+  if (typeof candidate === 'number' && Number.isInteger(candidate) && candidate >= 0) {
+    return `0x${candidate.toString(16)}`;
+  }
+  if (typeof candidate !== 'string') {
+    return null;
+  }
+
+  const trimmed = candidate.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  try {
+    return `0x${BigInt(trimmed).toString(16)}`;
+  } catch {
+    return null;
+  }
+}
+
+function parseTypedDataDomainChainID(params: readonly unknown[]): string | null {
+  if (params.length < 2) {
+    return null;
+  }
+
+  const typedDataParam = params[1];
+  if (!typedDataParam) {
+    return null;
+  }
+
+  let typedDataRecord: Record<string, unknown> | null = null;
+  if (typeof typedDataParam === 'string') {
+    const trimmed = typedDataParam.trim();
+    if (!trimmed) {
+      return null;
+    }
+    try {
+      typedDataRecord = JSON.parse(trimmed) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  } else if (typeof typedDataParam === 'object') {
+    typedDataRecord = typedDataParam as Record<string, unknown>;
+  }
+
+  if (!typedDataRecord) {
+    return null;
+  }
+  const domain = typedDataRecord.domain;
+  if (!domain || typeof domain !== 'object') {
+    return null;
+  }
+
+  return normalizeHexChainID((domain as Record<string, unknown>).chainId);
+}
+
+async function requestProviderChainID(provider: BrowserWalletProvider): Promise<string | null> {
+  try {
+    const chainID = await provider.request({ method: 'eth_chainId' });
+    return normalizeHexChainID(chainID);
+  } catch {
+    return null;
+  }
+}
+
+function formatChainLabel(chainID: string): string {
+  try {
+    return `${BigInt(chainID).toString(10)} (${chainID})`;
+  } catch {
+    return chainID;
+  }
+}
+
+function isChainMissingError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const requestError = error as RequestError;
+  if (requestError.code === 4902) {
+    return true;
+  }
+
+  const message = requestError.message?.toLowerCase() ?? '';
+  return message.includes('unrecognized chain') || message.includes('unknown chain');
+}
+
+async function ensureWalletOnSigningChain(
+  provider: BrowserWalletProvider,
+  method: string,
+  params: readonly unknown[],
+): Promise<void> {
+  if (!isHyperliquidTypedDataSigningMethod(method)) {
+    return;
+  }
+
+  const requiredChainID = parseTypedDataDomainChainID(params);
+  if (!requiredChainID) {
+    return;
+  }
+
+  const activeChainID = await requestProviderChainID(provider);
+  if (!activeChainID || activeChainID === requiredChainID) {
+    return;
+  }
+
+  try {
+    await provider.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: requiredChainID }],
+    });
+    return;
+  } catch (switchError) {
+    if (!isChainMissingError(switchError)) {
+      throw new Error(
+        `Wallet is on chain ${formatChainLabel(activeChainID)}, but this signature requires ${formatChainLabel(requiredChainID)}. Switch network in wallet and retry.`,
+      );
+    }
+  }
+
+  const rpcURL = resolveHyperliquidSigningRpcURL();
+  if (!rpcURL) {
+    throw new Error(
+      `Wallet does not have chain ${formatChainLabel(requiredChainID)} configured. Set NEXT_PUBLIC_HYPERLIQUID_SIGNING_CHAIN_RPC_URL and retry.`,
+    );
+  }
+
+  await provider.request({
+    method: 'wallet_addEthereumChain',
+    params: [
+      {
+        chainId: requiredChainID,
+        chainName: 'Anvil 1337',
+        nativeCurrency: {
+          name: 'Ether',
+          symbol: 'ETH',
+          decimals: 18,
+        },
+        rpcUrls: [rpcURL],
+      },
+    ],
+  });
+
+  await provider.request({
+    method: 'wallet_switchEthereumChain',
+    params: [{ chainId: requiredChainID }],
+  });
 }
 
 export async function connectRuntimeSlot(
@@ -662,6 +863,44 @@ export async function signRuntimeSlotMessage(parameters: {
   return normalizeSignature(ethSign);
 }
 
+async function requestActionSubmission(
+  provider: BrowserWalletProvider,
+  method: string,
+  params: readonly unknown[] | undefined,
+): Promise<unknown> {
+  if (params) {
+    return provider.request({ method, params });
+  }
+
+  return provider.request({ method });
+}
+
+function extractActionHash(submissionResult: unknown): string | null {
+  if (typeof submissionResult === 'string') {
+    const trimmed = submissionResult.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (!submissionResult || typeof submissionResult !== 'object') {
+    return null;
+  }
+
+  const submissionRecord = submissionResult as Record<string, unknown>;
+  for (const key of ['actionHash', 'hash', 'txHash'] as const) {
+    const candidate = submissionRecord[key];
+    if (typeof candidate !== 'string') {
+      continue;
+    }
+
+    const trimmed = candidate.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+
+  return null;
+}
+
 export async function disconnectRuntimeSlot(slotId: string): Promise<void> {
   const runtime = slotRuntimeById.get(slotId);
 
@@ -744,6 +983,72 @@ export async function signAndSubmitRuntimeSlotAction(parameters: {
   if (parameters.payload.kind !== 'perp_order_action') {
     throw new Error('Unsupported unsigned action kind.');
   }
+  if (!runtime.provider) {
+    throw new Error('No EIP-1193 provider is attached to this wallet slot.');
+  }
 
-  return `action_${Date.now().toString(36)}_${parameters.slotId.slice(0, 6)}`;
+  const walletRequest = parameters.payload.walletRequest;
+  const method = walletRequest.method.trim();
+  if (method.length === 0) {
+    throw new Error('Unsigned action payload wallet request method is required.');
+  }
+
+  await ensureProviderAccountMatches(runtime.provider, parameters.accountId);
+  const response = await requestActionSubmission(runtime.provider, method, walletRequest.params);
+  const actionHash = extractActionHash(response);
+  if (!actionHash) {
+    throw new Error('Wallet submission did not return an action hash.');
+  }
+
+  return actionHash;
+}
+
+export async function signRuntimeSlotActionPayload(parameters: {
+  slotId: string;
+  accountId: string;
+  payload: UnsignedActionPayload;
+}): Promise<string> {
+  const runtime = slotRuntimeById.get(parameters.slotId);
+  if (!runtime || !runtime.account.isConnected || !runtime.account.accountId) {
+    throw new Error('No active runtime session is available for this wallet slot.');
+  }
+
+  if (runtime.account.accountId !== parameters.accountId) {
+    throw new Error('The runtime session account does not match the selected account.');
+  }
+
+  if (parameters.payload.kind !== 'perp_order_action') {
+    throw new Error('Unsupported unsigned action kind.');
+  }
+  if (!runtime.provider) {
+    throw new Error('No EIP-1193 provider is attached to this wallet slot.');
+  }
+
+  const walletRequest = parameters.payload.walletRequest;
+  const method = walletRequest.method.trim();
+  if (method.length === 0) {
+    throw new Error('Unsigned action payload wallet request method is required.');
+  }
+
+  const walletParams = walletRequest.params ?? [];
+  const signerAccount = readRequestedSignerAccount(walletParams);
+  if (
+    signerAccount &&
+    normalizeComparableAccountId(signerAccount) !==
+      normalizeComparableAccountId(parameters.accountId)
+  ) {
+    throw new Error('Unsigned action payload signer account does not match the selected account.');
+  }
+  await ensureProviderAccountMatches(runtime.provider, parameters.accountId);
+  if (parameters.payload.venue === 'hyperliquid') {
+    await ensureWalletOnSigningChain(runtime.provider, method, walletParams);
+    await ensureProviderAccountMatches(runtime.provider, parameters.accountId);
+  }
+  const signature = await requestSignature(runtime.provider, method, walletParams);
+
+  if (!signature) {
+    throw new Error('Wallet did not return a signed action signature.');
+  }
+
+  return normalizeSignature(signature);
 }

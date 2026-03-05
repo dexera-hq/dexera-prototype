@@ -23,12 +23,18 @@ export interface PerpOrderRequest extends Wallet {
   clientOrderId?: string;
 }
 
+export interface WalletRequestEnvelope {
+  method: string;
+  params?: unknown[];
+}
+
 export interface UnsignedActionPayload {
   id: string;
   accountId: string;
   venue: Wallet['venue'];
   kind: UnsignedActionKind;
   action: Record<string, unknown>;
+  walletRequest: WalletRequestEnvelope;
 }
 
 export type TransactionSigningPolicy = 'client-signing-only';
@@ -42,6 +48,20 @@ export interface BuildUnsignedActionResponse {
   signingPolicy: TransactionSigningPolicy;
   disclaimer: string;
   unsignedActionPayload: UnsignedActionPayload;
+}
+
+export interface SubmitSignedActionRequest {
+  orderId: string;
+  signature: string;
+  unsignedActionPayload: UnsignedActionPayload;
+}
+
+export interface SubmitSignedActionResponse extends Wallet {
+  orderId: string;
+  actionHash: string;
+  status: string;
+  venueOrderId?: string;
+  source: string;
 }
 
 export interface Fill extends Wallet {

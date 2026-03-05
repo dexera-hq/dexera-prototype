@@ -55,10 +55,12 @@ export interface WalletConnectorOption {
 }
 
 export interface ActionSubmissionResult {
+  orderId: string;
   actionHash: string;
   unsignedActionPayloadId: string;
   accountId: string;
   venue: VenueId;
+  venueOrderId?: string;
 }
 
 export type ConnectWalletReason =

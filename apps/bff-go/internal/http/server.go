@@ -180,11 +180,17 @@ type perpOrderPreviewResponse struct {
 }
 
 type unsignedActionPayload struct {
-	ID        string         `json:"id"`
-	AccountID string         `json:"accountId"`
-	Venue     venueID        `json:"venue"`
-	Kind      string         `json:"kind"`
-	Action    map[string]any `json:"action"`
+	ID            string               `json:"id"`
+	AccountID     string               `json:"accountId"`
+	Venue         venueID              `json:"venue"`
+	Kind          string               `json:"kind"`
+	Action        map[string]any       `json:"action"`
+	WalletRequest walletRequestPayload `json:"walletRequest"`
+}
+
+type walletRequestPayload struct {
+	Method string `json:"method"`
+	Params []any  `json:"params,omitempty"`
 }
 
 type buildUnsignedActionResponse struct {
@@ -192,6 +198,22 @@ type buildUnsignedActionResponse struct {
 	SigningPolicy         string                `json:"signingPolicy"`
 	Disclaimer            string                `json:"disclaimer"`
 	UnsignedActionPayload unsignedActionPayload `json:"unsignedActionPayload"`
+}
+
+type submitSignedActionRequest struct {
+	OrderID               string                `json:"orderId"`
+	Signature             string                `json:"signature"`
+	UnsignedActionPayload unsignedActionPayload `json:"unsignedActionPayload"`
+}
+
+type submitSignedActionResponse struct {
+	OrderID      string  `json:"orderId"`
+	ActionHash   string  `json:"actionHash"`
+	Venue        venueID `json:"venue"`
+	Status       string  `json:"status"`
+	DebugReason  *string `json:"debugReason,omitempty"`
+	VenueOrderID *string `json:"venueOrderId,omitempty"`
+	Source       string  `json:"source"`
 }
 
 type perpPosition struct {
@@ -226,11 +248,16 @@ type perpPositionsQuery struct {
 type perpVenueAdapter interface {
 	PreviewOrder(r *http.Request, req buildUnsignedActionRequest) (perpOrderPreviewResponse, error)
 	BuildUnsignedAction(r *http.Request, req buildUnsignedActionRequest) (buildUnsignedActionResponse, error)
+	SubmitSignedAction(
+		r *http.Request,
+		req submitSignedActionRequest,
+	) (submitSignedActionResponse, error)
 	GetPositions(r *http.Request, query perpPositionsQuery) (perpPositionsResponse, error)
 	CheckWalletEligibility(r *http.Request, address string) (walletVenueEligibilityResult, error)
 }
 
 var errAdapterNotConfigured = errors.New("venue adapter is not configured")
+var errSignedSubmitNotSupported = errors.New("signed action submission is not supported for this venue")
 var venueAdapterResolver = resolvePerpVenueAdapter
 var walletChallenges = newWalletChallengeStore(time.Now)
 
@@ -242,6 +269,7 @@ func NewMux() *http.ServeMux {
 	mux.HandleFunc("/api/v1/wallet/verify", walletVerifyHandler)
 	mux.HandleFunc("/api/v1/perp/orders/preview", perpOrderPreviewHandler)
 	mux.HandleFunc("/api/v1/perp/actions/unsigned", buildUnsignedActionHandler)
+	mux.HandleFunc("/api/v1/perp/actions/submit", submitSignedActionHandler)
 	mux.HandleFunc("/api/v1/perp/positions", perpPositionsHandler)
 	return mux
 }
@@ -453,6 +481,43 @@ func buildUnsignedActionHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+func submitSignedActionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req submitSignedActionRequest
+	if err := decodeStrictJSONBody(r, &req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if err := validateSubmitSignedActionRequest(req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	venue, err := parseVenue(string(req.UnsignedActionPayload.Venue))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.UnsignedActionPayload.Venue = venue
+
+	adapter, err := venueAdapterResolver(req.UnsignedActionPayload.Venue)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	response, err := adapter.SubmitSignedAction(r, req)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
 func perpPositionsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -604,6 +669,50 @@ func validateBuildUnsignedActionRequest(request buildUnsignedActionRequest) erro
 	return nil
 }
 
+func validateSubmitSignedActionRequest(request submitSignedActionRequest) error {
+	if strings.TrimSpace(request.OrderID) == "" {
+		return errors.New("orderId is required")
+	}
+	if err := verifyWalletChallengeSignature("submit-signed-action", request.Signature); err != nil {
+		return err
+	}
+
+	payload := request.UnsignedActionPayload
+	if strings.TrimSpace(payload.ID) == "" {
+		return errors.New("unsignedActionPayload.id is required")
+	}
+	if strings.TrimSpace(payload.AccountID) == "" {
+		return errors.New("unsignedActionPayload.accountId is required")
+	}
+	if _, err := parseVenue(string(payload.Venue)); err != nil {
+		return err
+	}
+	if strings.TrimSpace(payload.Kind) != "perp_order_action" {
+		return errors.New("unsignedActionPayload.kind must be perp_order_action")
+	}
+	if len(payload.Action) == 0 {
+		return errors.New("unsignedActionPayload.action is required")
+	}
+	if strings.TrimSpace(payload.WalletRequest.Method) == "" {
+		return errors.New("unsignedActionPayload.walletRequest.method is required")
+	}
+	for _, forbidden := range [...]string{"signature", "rawAction", "signedAction", "actionHash"} {
+		if _, hasForbidden := payload.Action[forbidden]; hasForbidden {
+			return fmt.Errorf(`unsignedActionPayload.action must not include "%s"`, forbidden)
+		}
+	}
+
+	actionBody, actionOK := payload.Action["action"].(map[string]any)
+	if !actionOK || len(actionBody) == 0 {
+		return errors.New("unsignedActionPayload.action.action must be a non-empty object")
+	}
+	if _, err := parseActionNonce(payload.Action["nonce"]); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -628,6 +737,10 @@ func decodeStrictJSONBody(r *http.Request, dst any) error {
 func handleAdapterError(w http.ResponseWriter, err error) {
 	if errors.Is(err, errAdapterNotConfigured) {
 		http.Error(w, "venue integration is not configured", http.StatusInternalServerError)
+		return
+	}
+	if errors.Is(err, errSignedSubmitNotSupported) {
+		http.Error(w, err.Error(), http.StatusNotImplemented)
 		return
 	}
 

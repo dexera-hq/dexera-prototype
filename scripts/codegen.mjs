@@ -115,6 +115,12 @@ export interface BffUnsignedActionPayload {
   venue: BffVenueId;
   kind: 'perp_order_action';
   action: Record<string, unknown>;
+  walletRequest: BffWalletRequestEnvelope;
+}
+
+export interface BffWalletRequestEnvelope {
+  method: string;
+  params?: unknown[];
 }
 
 export interface BffBuildUnsignedActionResponse {
@@ -122,6 +128,21 @@ export interface BffBuildUnsignedActionResponse {
   signingPolicy: 'client-signing-only';
   disclaimer: string;
   unsignedActionPayload: BffUnsignedActionPayload;
+}
+
+export interface BffSubmitSignedActionRequest {
+  orderId: string;
+  signature: string;
+  unsignedActionPayload: BffUnsignedActionPayload;
+}
+
+export interface BffSubmitSignedActionResponse {
+  orderId: string;
+  actionHash: string;
+  venue: BffVenueId;
+  status: string;
+  venueOrderId?: string;
+  source: string;
 }
 
 export interface BffPerpPosition {
@@ -242,6 +263,12 @@ export interface BffUnsignedActionPayload {
   venue: BffVenueId;
   kind: 'perp_order_action';
   action: Record<string, unknown>;
+  walletRequest: BffWalletRequestEnvelope;
+}
+
+export interface BffWalletRequestEnvelope {
+  method: string;
+  params?: unknown[];
 }
 
 export interface BffBuildUnsignedActionResponse {
@@ -249,6 +276,21 @@ export interface BffBuildUnsignedActionResponse {
   signingPolicy: 'client-signing-only';
   disclaimer: string;
   unsignedActionPayload: BffUnsignedActionPayload;
+}
+
+export interface BffSubmitSignedActionRequest {
+  orderId: string;
+  signature: string;
+  unsignedActionPayload: BffUnsignedActionPayload;
+}
+
+export interface BffSubmitSignedActionResponse {
+  orderId: string;
+  actionHash: string;
+  venue: BffVenueId;
+  status: string;
+  venueOrderId?: string;
+  source: string;
 }
 
 export interface BffPerpPosition {

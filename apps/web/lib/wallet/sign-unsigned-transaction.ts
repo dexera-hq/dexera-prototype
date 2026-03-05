@@ -10,12 +10,14 @@ import type { ActionSubmissionResult, WalletSlot } from './types';
 
 export interface ClientActionSubmitter {
   sendAction: (parameters: {
+    orderId: string;
     accountId: string;
     payload: UnsignedActionPayload;
-  }) => Promise<string>;
+  }) => Promise<{ actionHash: string; orderId?: string; venueOrderId?: string }>;
 }
 
 export async function submitUnsignedAction(parameters: {
+  orderId: string;
   payload: unknown;
   activeWallet: WalletSlot | null;
   submitter: ClientActionSubmitter;
@@ -28,13 +30,22 @@ export async function submitUnsignedAction(parameters: {
   if (!activeWallet) {
     throw new TransactionGuardrailError('missing-wallet', 'Connect a wallet before signing.');
   }
+  const orderId = parameters.orderId.trim();
+  if (orderId.length === 0) {
+    throw new TransactionGuardrailError(
+      'invalid-payload',
+      'Unsigned action response is missing orderId.',
+    );
+  }
 
-  const actionHash = await parameters.submitter.sendAction({
+  const submission = await parameters.submitter.sendAction({
+    orderId,
     accountId: activeWallet.accountId,
     payload: parameters.payload,
   });
+  const actionHash = submission.actionHash.trim();
 
-  if (actionHash.trim().length === 0) {
+  if (actionHash.length === 0) {
     throw new TransactionGuardrailError(
       'signing-failed',
       'Wallet submission returned an empty action hash.',
@@ -42,9 +53,11 @@ export async function submitUnsignedAction(parameters: {
   }
 
   return {
+    orderId: submission.orderId?.trim() || orderId,
     actionHash,
     unsignedActionPayloadId: parameters.payload.id,
     accountId: activeWallet.accountId,
     venue: activeWallet.venue,
+    venueOrderId: submission.venueOrderId?.trim() || undefined,
   };
 }

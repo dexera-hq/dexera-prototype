@@ -108,6 +108,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BuildUnsignedActionResponse'
+  /api/v1/perp/actions/submit:
+    post:
+      summary: Submit a signed perpetual action to the selected venue
+      operationId: postSubmitSignedPerpAction
+      tags:
+        - trading
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitSignedActionRequest'
+      responses:
+        '200':
+          description: Signed perpetual action submission result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitSignedActionResponse'
   /api/v1/perp/positions:
     get:
       summary: Retrieve perpetual positions for an account
@@ -346,6 +365,7 @@ components:
         - venue
         - kind
         - action
+        - walletRequest
       properties:
         id:
           type: string
@@ -359,6 +379,17 @@ components:
         action:
           type: object
           additionalProperties: true
+        walletRequest:
+          type: object
+          additionalProperties: false
+          required:
+            - method
+          properties:
+            method:
+              type: string
+            params:
+              type: array
+              items: {}
     BuildUnsignedActionResponse:
       type: object
       additionalProperties: false
@@ -377,6 +408,42 @@ components:
           type: string
         unsignedActionPayload:
           $ref: '#/components/schemas/UnsignedActionPayload'
+    SubmitSignedActionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - orderId
+        - signature
+        - unsignedActionPayload
+      properties:
+        orderId:
+          type: string
+        signature:
+          type: string
+        unsignedActionPayload:
+          $ref: '#/components/schemas/UnsignedActionPayload'
+    SubmitSignedActionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - orderId
+        - actionHash
+        - venue
+        - status
+        - source
+      properties:
+        orderId:
+          type: string
+        actionHash:
+          type: string
+        venue:
+          $ref: '#/components/schemas/VenueId'
+        status:
+          type: string
+        venueOrderId:
+          type: string
+        source:
+          type: string
     PerpPosition:
       type: object
       additionalProperties: false

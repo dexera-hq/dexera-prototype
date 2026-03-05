@@ -2,6 +2,7 @@ import {
   BFF_PUBLIC_PATHS,
   type BffBuildUnsignedActionResponse,
   type BffPerpOrderPreviewResponse,
+  type BffSubmitSignedActionResponse,
   type BffWalletChallengeResponse,
   type BffWalletVerifyResponse,
 } from '@dexera/api-types/openapi';
@@ -15,6 +16,7 @@ describe('generated api contracts', () => {
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/wallet/verify');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/orders/preview');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/actions/unsigned');
+    expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/actions/submit');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/positions');
   });
 
@@ -55,6 +57,10 @@ describe('generated api contracts', () => {
           size: '0.25',
           limitPrice: '68400.00',
         },
+        walletRequest: {
+          method: 'wallet_perp_submitAction',
+          params: [{ payloadId: 'uap_1' }],
+        },
       },
     };
 
@@ -79,5 +85,18 @@ describe('generated api contracts', () => {
 
     expect(challengeFixture.challengeId).toBe('wch_1');
     expect(verifyFixture.ownershipVerified).toBe(true);
+  });
+
+  it('exposes signed submission response fields in generated types', () => {
+    const responseFixture: BffSubmitSignedActionResponse = {
+      orderId: 'ord_hl_1',
+      actionHash: '0xhash',
+      venue: 'hyperliquid',
+      status: 'submitted',
+      venueOrderId: '918273',
+      source: 'hyperliquid',
+    };
+
+    expect(responseFixture.actionHash).toBe('0xhash');
   });
 });

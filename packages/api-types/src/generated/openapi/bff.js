@@ -8,6 +8,7 @@ export const BFF_PUBLIC_PATHS = [
   "/api/v1/wallet/verify",
   "/api/v1/perp/orders/preview",
   "/api/v1/perp/actions/unsigned",
+  "/api/v1/perp/actions/submit",
   "/api/v1/perp/positions"
 ];
 
