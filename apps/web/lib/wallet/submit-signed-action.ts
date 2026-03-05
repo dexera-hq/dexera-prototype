@@ -9,6 +9,10 @@ const DEFAULT_SIGNED_ACTION_SUBMIT_ENDPOINT = '/api/v1/perp/actions/submit';
 
 type FetchLike = typeof fetch;
 
+export type SubmitSignedActionClientResponse = BffSubmitSignedActionResponse & {
+  debugReason?: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -19,7 +23,7 @@ export async function submitSignedAction(
     endpoint?: string;
     fetchImpl?: FetchLike;
   },
-): Promise<BffSubmitSignedActionResponse> {
+): Promise<SubmitSignedActionClientResponse> {
   const fetchImpl = options?.fetchImpl ?? fetch;
   const endpoint = options?.endpoint ?? DEFAULT_SIGNED_ACTION_SUBMIT_ENDPOINT;
 
@@ -85,6 +89,15 @@ export async function submitSignedAction(
       'Signed submit response venueOrderId must be a non-empty string when provided.',
     );
   }
+  if (
+    payload.debugReason !== undefined &&
+    (typeof payload.debugReason !== 'string' || payload.debugReason.trim().length === 0)
+  ) {
+    throw new TransactionGuardrailError(
+      'invalid-payload',
+      'Signed submit response debugReason must be a non-empty string when provided.',
+    );
+  }
 
   return {
     orderId: payload.orderId,
@@ -92,6 +105,7 @@ export async function submitSignedAction(
     venue: payload.venue as BffSubmitSignedActionResponse['venue'],
     status: payload.status,
     venueOrderId: payload.venueOrderId as string | undefined,
+    debugReason: payload.debugReason as string | undefined,
     source: payload.source,
   };
 }

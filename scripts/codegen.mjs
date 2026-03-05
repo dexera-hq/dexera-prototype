@@ -168,6 +168,18 @@ export interface BffPerpPositionsResponse {
   source: string;
 }
 
+export interface BffPerpOrderStatusResponse {
+  accountId: string;
+  venue: BffVenueId;
+  orderId?: string;
+  venueOrderId: string;
+  status: string;
+  venueStatus: string;
+  isTerminal: boolean;
+  lastUpdatedAt: string;
+  source: string;
+}
+
 export const BFF_OPENAPI_INFO = {
   title: ${JSON.stringify(openapiTitle)},
   version: ${JSON.stringify(openapiVersion)},
@@ -313,6 +325,18 @@ export interface BffPerpPositionsResponse {
   accountId: string;
   venue: BffVenueId;
   positions: BffPerpPosition[];
+  source: string;
+}
+
+export interface BffPerpOrderStatusResponse {
+  accountId: string;
+  venue: BffVenueId;
+  orderId?: string;
+  venueOrderId: string;
+  status: string;
+  venueStatus: string;
+  isTerminal: boolean;
+  lastUpdatedAt: string;
   source: string;
 }
 

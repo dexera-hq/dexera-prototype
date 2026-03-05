@@ -156,6 +156,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PerpPositionsResponse'
+  /api/v1/perp/orders/status:
+    get:
+      summary: Retrieve perpetual order status for reconciliation
+      operationId: getPerpOrderStatus
+      tags:
+        - trading
+      parameters:
+        - in: query
+          name: accountId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: venue
+          required: true
+          schema:
+            $ref: '#/components/schemas/VenueId'
+        - in: query
+          name: venueOrderId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: orderId
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order status snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerpOrderStatusResponse'
 components:
   schemas:
     VenueId:
@@ -507,5 +541,37 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PerpPosition'
+        source:
+          type: string
+    PerpOrderStatusResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - accountId
+        - venue
+        - venueOrderId
+        - status
+        - venueStatus
+        - isTerminal
+        - lastUpdatedAt
+        - source
+      properties:
+        accountId:
+          type: string
+        venue:
+          $ref: '#/components/schemas/VenueId'
+        orderId:
+          type: string
+        venueOrderId:
+          type: string
+        status:
+          type: string
+        venueStatus:
+          type: string
+        isTerminal:
+          type: boolean
+        lastUpdatedAt:
+          type: string
+          format: date-time
         source:
           type: string

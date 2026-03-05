@@ -173,6 +173,10 @@ func (a *hyperliquidAdapter) BuildUnsignedAction(
 	if err != nil {
 		return buildUnsignedActionResponse{}, err
 	}
+	szDecimals := 0
+	if asset >= 0 && asset < len(metaPayload.Universe) {
+		szDecimals = metaPayload.Universe[asset].SzDecimals
+	}
 
 	isBuy := strings.EqualFold(strings.TrimSpace(req.Order.Side), "buy")
 	reduceOnly := req.Order.ReduceOnly != nil && *req.Order.ReduceOnly
@@ -189,9 +193,13 @@ func (a *hyperliquidAdapter) BuildUnsignedAction(
 		if req.Order.LimitPrice == nil || strings.TrimSpace(*req.Order.LimitPrice) == "" {
 			return buildUnsignedActionResponse{}, errors.New("limit orders require limitPrice")
 		}
-		price, err = normalizeHyperliquidWireDecimal(*req.Order.LimitPrice)
-		if err != nil {
+		limitPrice, parseErr := strconv.ParseFloat(strings.TrimSpace(*req.Order.LimitPrice), 64)
+		if parseErr != nil {
 			return buildUnsignedActionResponse{}, errors.New("limitPrice must be a plain decimal number")
+		}
+		price, err = normalizeHyperliquidPerpPriceWire(limitPrice, szDecimals)
+		if err != nil {
+			return buildUnsignedActionResponse{}, errors.New("limitPrice must be a valid Hyperliquid price")
 		}
 	case "market":
 		midPayload, midErr := a.infoClient.AllMids(r.Context())
@@ -211,8 +219,7 @@ func (a *hyperliquidAdapter) BuildUnsignedAction(
 		if !isBuy {
 			slippageMultiplier = 0.95
 		}
-		marketPrice := strconv.FormatFloat(mid*slippageMultiplier, 'f', 8, 64)
-		price, err = normalizeHyperliquidWireDecimal(marketPrice)
+		price, err = normalizeHyperliquidPerpPriceWire(mid*slippageMultiplier, szDecimals)
 		if err != nil {
 			return buildUnsignedActionResponse{}, fmt.Errorf("failed to normalize mark price for %s", coin)
 		}
@@ -450,6 +457,48 @@ func (a *hyperliquidAdapter) GetPositions(
 	}, nil
 }
 
+func (a *hyperliquidAdapter) GetOrderStatus(
+	r *http.Request,
+	query perpOrderStatusQuery,
+) (perpOrderStatusResponse, error) {
+	trimmedVenueOrderID := strings.TrimSpace(query.VenueOrderID)
+	if trimmedVenueOrderID == "" {
+		return perpOrderStatusResponse{}, errors.New("venueOrderId is required")
+	}
+
+	var oid any = trimmedVenueOrderID
+	if parsedOID, err := strconv.ParseUint(trimmedVenueOrderID, 10, 64); err == nil {
+		oid = parsedOID
+	}
+
+	statusPayload, err := a.postJSON(r.Context(), "/info", map[string]any{
+		"type": "orderStatus",
+		"user": strings.TrimSpace(query.AccountID),
+		"oid":  oid,
+	})
+	if err != nil {
+		return perpOrderStatusResponse{}, err
+	}
+
+	venueStatus := extractHyperliquidOrderStatusValue(statusPayload)
+	if venueStatus == "" {
+		venueStatus = "unknown"
+	}
+	normalizedStatus := normalizeHyperliquidOrderStatus(venueStatus)
+
+	return perpOrderStatusResponse{
+		AccountID:     strings.TrimSpace(query.AccountID),
+		Venue:         venueHyperliquid,
+		OrderID:       strings.TrimSpace(query.OrderID),
+		VenueOrderID:  trimmedVenueOrderID,
+		Status:        normalizedStatus,
+		VenueStatus:   venueStatus,
+		IsTerminal:    isHyperliquidOrderStatusTerminal(normalizedStatus),
+		LastUpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		Source:        string(venueHyperliquid),
+	}, nil
+}
+
 func (a *asterMockAdapter) PreviewOrder(
 	_ *http.Request,
 	req buildUnsignedActionRequest,
@@ -552,6 +601,13 @@ func (a *asterMockAdapter) GetPositions(
 		},
 		Source: "mock",
 	}, nil
+}
+
+func (a *asterMockAdapter) GetOrderStatus(
+	_ *http.Request,
+	_ perpOrderStatusQuery,
+) (perpOrderStatusResponse, error) {
+	return perpOrderStatusResponse{}, errors.New("order status reconciliation is not supported for aster")
 }
 
 func (a *hyperliquidAdapter) CheckWalletEligibility(
@@ -847,6 +903,69 @@ func normalizeHyperliquidWireDecimal(raw string) (string, error) {
 		sign = ""
 	}
 	return sign + normalized, nil
+}
+
+func normalizeHyperliquidPerpPriceWire(price float64, szDecimals int) (string, error) {
+	if math.IsNaN(price) || math.IsInf(price, 0) || price <= 0 {
+		return "", errors.New("price must be a positive finite number")
+	}
+
+	rounded := roundToSignificantFigures(price, 5)
+	maxDecimals := 6 - szDecimals
+	if maxDecimals < 0 {
+		maxDecimals = 0
+	}
+	rounded = roundToDecimals(rounded, maxDecimals)
+	if rounded <= 0 {
+		return "", errors.New("price rounds to zero with current tick precision")
+	}
+
+	raw := strconv.FormatFloat(rounded, 'f', maxDecimals, 64)
+	return normalizeHyperliquidWireDecimal(raw)
+}
+
+func roundToDecimals(value float64, decimals int) float64 {
+	if decimals < 0 {
+		decimals = 0
+	}
+	pow := math.Pow(10, float64(decimals))
+	return math.Round(value*pow) / pow
+}
+
+func roundToSignificantFigures(value float64, sigFigs int) float64 {
+	if value == 0 {
+		return 0
+	}
+	if sigFigs <= 0 {
+		return value
+	}
+
+	absValue := math.Abs(value)
+	integerPart := math.Floor(absValue)
+	numIntegerDigits := 0
+	if integerPart > 0 {
+		temp := int(integerPart)
+		for temp > 0 {
+			temp /= 10
+			numIntegerDigits++
+		}
+
+		if numIntegerDigits >= sigFigs {
+			return math.Copysign(integerPart, value)
+		}
+
+		sigFigsLeft := sigFigs - numIntegerDigits
+		rounded := roundToDecimals(absValue, sigFigsLeft)
+		return math.Copysign(rounded, value)
+	}
+
+	multiplications := 0
+	for absValue < 1 {
+		absValue *= 10
+		multiplications++
+	}
+	rounded := roundToDecimals(absValue, sigFigs-1)
+	return math.Copysign(rounded/math.Pow(10, float64(multiplications)), value)
 }
 
 func isDigitString(value string) bool {
@@ -1283,6 +1402,54 @@ func normalizeHyperliquidSubmissionStatus(exchangeResponse map[string]any) strin
 		return "rejected"
 	}
 	return status
+}
+
+func normalizeHyperliquidOrderStatus(venueStatus string) string {
+	normalizedVenueStatus := strings.ToLower(strings.TrimSpace(venueStatus))
+	if normalizedVenueStatus == "" {
+		return "unknown"
+	}
+	if normalizedVenueStatus == "filled" {
+		return "filled"
+	}
+	if normalizedVenueStatus == "open" || normalizedVenueStatus == "triggered" {
+		return "open"
+	}
+	if strings.Contains(normalizedVenueStatus, "rejected") {
+		return "rejected"
+	}
+	if strings.Contains(normalizedVenueStatus, "canceled") || normalizedVenueStatus == "cancelled" {
+		return "cancelled"
+	}
+	return "submitted"
+}
+
+func extractHyperliquidOrderStatusValue(statusPayload map[string]any) string {
+	topLevelStatus := strings.ToLower(strings.TrimSpace(stringField(statusPayload, "status")))
+	if topLevelStatus != "" && topLevelStatus != "order" {
+		return topLevelStatus
+	}
+
+	order, hasOrder := statusPayload["order"].(map[string]any)
+	if !hasOrder {
+		return topLevelStatus
+	}
+
+	nestedStatus := strings.ToLower(strings.TrimSpace(stringField(order, "status")))
+	if nestedStatus != "" {
+		return nestedStatus
+	}
+
+	return topLevelStatus
+}
+
+func isHyperliquidOrderStatusTerminal(normalizedStatus string) bool {
+	switch strings.ToLower(strings.TrimSpace(normalizedStatus)) {
+	case "filled", "cancelled", "rejected":
+		return true
+	default:
+		return false
+	}
 }
 
 func hasHyperliquidOrderError(exchangeResponse map[string]any) bool {

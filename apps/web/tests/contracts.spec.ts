@@ -1,6 +1,7 @@
 import {
   BFF_PUBLIC_PATHS,
   type BffBuildUnsignedActionResponse,
+  type BffPerpOrderStatusResponse,
   type BffPerpOrderPreviewResponse,
   type BffSubmitSignedActionResponse,
   type BffWalletChallengeResponse,
@@ -18,6 +19,7 @@ describe('generated api contracts', () => {
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/actions/unsigned');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/actions/submit');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/positions');
+    expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/orders/status');
   });
 
   it('exposes perp order preview fields in generated types', () => {
@@ -98,5 +100,21 @@ describe('generated api contracts', () => {
     };
 
     expect(responseFixture.actionHash).toBe('0xhash');
+  });
+
+  it('exposes perp order status response fields in generated types', () => {
+    const responseFixture: BffPerpOrderStatusResponse = {
+      accountId: 'acct_1',
+      venue: 'hyperliquid',
+      orderId: 'ord_hl_1',
+      venueOrderId: '918273',
+      status: 'open',
+      venueStatus: 'open',
+      isTerminal: false,
+      lastUpdatedAt: '2026-01-01T00:00:00Z',
+      source: 'hyperliquid',
+    };
+
+    expect(responseFixture.venueOrderId).toBe('918273');
   });
 });

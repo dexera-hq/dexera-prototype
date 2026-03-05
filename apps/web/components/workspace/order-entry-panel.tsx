@@ -33,6 +33,10 @@ import {
 } from '@/lib/wallet/transaction-guardrails';
 import type { ActionSubmissionResult } from '@/lib/wallet/types';
 import { isWalletSlotTradable } from '@/lib/wallet/types';
+import {
+  formatTrackedPerpActionStatusLabel,
+  useSubmittedPerpActionsTracker,
+} from '@/lib/wallet/use-submitted-perp-actions';
 import { useWalletManager } from '@/lib/wallet/wallet-manager-context';
 
 type OrderEntryExecutionState =
@@ -55,6 +59,19 @@ function truncateAccountId(accountId: string): string {
 
 function toJsonPreview(value: unknown): string {
   return JSON.stringify(value, null, 2);
+}
+
+function formatTimestamp(isoTimestamp: string): string {
+  const date = new Date(isoTimestamp);
+  if (Number.isNaN(date.getTime())) {
+    return isoTimestamp;
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
 
 function getWalletBlockingMessage(parameters: {
@@ -95,6 +112,19 @@ type OrderEntryPanelProps = {
 export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPanelProps) {
   const { activeSlot } = useWalletManager();
   const canTradeWithActiveWallet = isWalletSlotTradable(activeSlot);
+  const {
+    actions: trackedActions,
+    addOptimisticAction,
+    markActionSubmitted,
+    markActionFailed,
+  } = useSubmittedPerpActionsTracker({
+    activeWallet: activeSlot
+      ? {
+          accountId: activeSlot.accountId,
+          venue: activeSlot.venue,
+        }
+      : null,
+  });
   const [draft, setDraft] = useState<OrderEntryDraft>(() =>
     createOrderEntryDraft({ venue: activeSlot?.venue ?? 'hyperliquid' }),
   );
@@ -286,6 +316,19 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
           ? 'Awaiting wallet signature for Hyperliquid action...'
           : 'Submitting unsigned payload to the connected wallet runtime...',
     });
+    const optimisticActionId =
+      activeSlot.venue === 'hyperliquid'
+        ? addOptimisticAction({
+            accountId: activeSlot.accountId,
+            venue: activeSlot.venue,
+            instrument: draft.instrument,
+            side: draft.side,
+            type: draft.type,
+            size: draft.size,
+            limitPrice: draft.type === 'limit' ? draft.limitPrice : undefined,
+            orderId: previewResponse.orderId,
+          })
+        : null;
 
     try {
       const submission =
@@ -309,7 +352,14 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
               });
 
               if (venueSubmission.status.trim().toLowerCase() !== 'submitted') {
-                throw new Error(`Venue submission returned status ${venueSubmission.status}.`);
+                const debugReason =
+                  typeof venueSubmission.debugReason === 'string' &&
+                  venueSubmission.debugReason.trim().length > 0
+                    ? ` ${venueSubmission.debugReason}`
+                    : '';
+                throw new Error(
+                  `Venue submission returned status ${venueSubmission.status}.${debugReason}`,
+                );
               }
 
               return {
@@ -339,6 +389,18 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
         ...submission,
         submittedAt: new Date().toISOString(),
       };
+
+      if (activeSlot.venue === 'hyperliquid' && optimisticActionId) {
+        markActionSubmitted({
+          actionId: optimisticActionId,
+          accountId: activeSlot.accountId,
+          venue: activeSlot.venue,
+          orderId: submission.orderId,
+          actionHash: submission.actionHash,
+          venueOrderId: submission.venueOrderId,
+        });
+      }
+
       setLatestSubmission(receipt);
       onActionSubmitted?.(receipt);
 
@@ -354,6 +416,16 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
         error instanceof TransactionGuardrailError || error instanceof Error
           ? error.message
           : 'Wallet submission failed unexpectedly.';
+
+      if (activeSlot.venue === 'hyperliquid' && optimisticActionId) {
+        markActionFailed({
+          actionId: optimisticActionId,
+          accountId: activeSlot.accountId,
+          venue: activeSlot.venue,
+          error: message,
+        });
+      }
+
       setExecutionState({
         status: 'error',
         message,
@@ -575,6 +647,42 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
           <p className="order-entry-blocking-message">{previewBlockingMessage}</p>
         ) : null}
       </div>
+
+      {activeSlot?.venue === 'hyperliquid' ? (
+        <div className="order-entry-tracked-actions">
+          <div className="order-entry-preview-header">
+            <p>Recent Hyperliquid Actions</p>
+            <span className="order-entry-preview-pill">{trackedActions.length}</span>
+          </div>
+          {trackedActions.length > 0 ? (
+            <ul className="order-entry-tracked-actions-list">
+              {trackedActions.map((action) => (
+                <li className="order-entry-tracked-actions-item" key={action.id}>
+                  <span className={`order-entry-tracked-status status-${action.status}`}>
+                    {formatTrackedPerpActionStatusLabel(action.status)}
+                  </span>
+                  <p>
+                    {action.instrument} {action.side.toUpperCase()} {action.size}
+                  </p>
+                  <p>
+                    {action.orderId ? `order ${action.orderId}` : 'order pending'}
+                    {action.venueOrderId ? ` / venue ${action.venueOrderId}` : ''}
+                    {action.actionHash ? ` / hash ${action.actionHash}` : ''}
+                  </p>
+                  <p>
+                    {action.venueStatus ? `venue: ${action.venueStatus}` : 'venue: pending'} at{' '}
+                    {formatTimestamp(action.updatedAt)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="order-entry-preview-empty">
+              No submitted Hyperliquid perp actions tracked for the active wallet yet.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       <div className="order-entry-preview">
         <div className="order-entry-preview-header">
