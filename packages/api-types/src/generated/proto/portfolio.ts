@@ -1,8 +1,8 @@
 // AUTO-GENERATED FILE. DO NOT EDIT.
 // Source: contracts/proto/portfolio.proto
 
-export const packageName = 'dexera.portfolio.v1';
-export const serviceName = 'PortfolioService';
+export const packageName = "dexera.portfolio.v1";
+export const serviceName = "PortfolioService";
 
 export interface PingRequest {
   request_id: string;

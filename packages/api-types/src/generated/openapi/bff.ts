@@ -1,25 +1,17 @@
 // AUTO-GENERATED FILE. DO NOT EDIT.
 // Source: contracts/openapi/bff.openapi.yaml
 
-export type BffPublicPath =
-  | '/health'
-  | '/api/v1/placeholder'
-  | '/api/v1/wallet/challenge'
-  | '/api/v1/wallet/verify'
-  | '/api/v1/perp/orders/preview'
-  | '/api/v1/perp/actions/unsigned'
-  | '/api/v1/perp/actions/submit'
-  | '/api/v1/perp/positions';
+export type BffPublicPath = '/health' | '/api/v1/placeholder' | '/api/v1/wallet/challenge' | '/api/v1/wallet/verify' | '/api/v1/perp/orders/preview' | '/api/v1/perp/actions/unsigned' | '/api/v1/perp/actions/submit' | '/api/v1/perp/positions';
 
 export const BFF_PUBLIC_PATHS = [
-  '/health',
-  '/api/v1/placeholder',
-  '/api/v1/wallet/challenge',
-  '/api/v1/wallet/verify',
-  '/api/v1/perp/orders/preview',
-  '/api/v1/perp/actions/unsigned',
-  '/api/v1/perp/actions/submit',
-  '/api/v1/perp/positions',
+  "/health",
+  "/api/v1/placeholder",
+  "/api/v1/wallet/challenge",
+  "/api/v1/wallet/verify",
+  "/api/v1/perp/orders/preview",
+  "/api/v1/perp/actions/unsigned",
+  "/api/v1/perp/actions/submit",
+  "/api/v1/perp/positions"
 ] as const;
 
 export type BffVenueId = 'hyperliquid' | 'aster';
@@ -159,6 +151,6 @@ export interface BffPerpPositionsResponse {
 }
 
 export const BFF_OPENAPI_INFO = {
-  title: 'Dexera BFF API',
-  version: '0.2.0',
+  title: "Dexera BFF API",
+  version: "0.2.0",
 } as const;
