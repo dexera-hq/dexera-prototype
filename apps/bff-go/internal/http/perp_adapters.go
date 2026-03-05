@@ -3,6 +3,8 @@ package http
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +15,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
+	hyperliquid "github.com/sonirico/go-hyperliquid"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 const (
@@ -33,6 +39,8 @@ func (e *upstreamHTTPError) Error() string {
 type hyperliquidAdapter struct {
 	baseURL    string
 	httpClient *http.Client
+	infoClient *hyperliquid.Info
+	isMainnet  bool
 }
 
 type asterMockAdapter struct{}
@@ -62,12 +70,29 @@ func newHyperliquidAdapterFromEnv() (*hyperliquidAdapter, error) {
 		}
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
+	isMainnet := isHyperliquidMainnetURL(baseURL)
+	if network := strings.ToLower(strings.TrimSpace(os.Getenv("HYPERLIQUID_NETWORK"))); network == "testnet" {
+		isMainnet = false
+	}
+
+	metaSeed := &hyperliquid.Meta{}
+	spotMetaSeed := &hyperliquid.SpotMeta{}
+	infoClient := hyperliquid.NewInfo(
+		context.Background(),
+		baseURL,
+		true,
+		metaSeed,
+		spotMetaSeed,
+		nil,
+	)
 
 	return &hyperliquidAdapter{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 8 * time.Second,
 		},
+		infoClient: infoClient,
+		isMainnet:  isMainnet,
 	}, nil
 }
 
@@ -80,14 +105,12 @@ func (a *hyperliquidAdapter) PreviewOrder(
 		return perpOrderPreviewResponse{}, errors.New("instrument is required")
 	}
 
-	payload, err := a.postJSON(r.Context(), "/info", map[string]any{
-		"type": "allMids",
-	})
+	mids, err := a.infoClient.AllMids(r.Context())
 	if err != nil {
 		return perpOrderPreviewResponse{}, err
 	}
 
-	markPriceValue := stringField(payload, coin)
+	markPriceValue := strings.TrimSpace(mids[coin])
 	if markPriceValue == "" {
 		return perpOrderPreviewResponse{}, fmt.Errorf("failed to resolve mark price for %s", coin)
 	}
@@ -139,13 +162,11 @@ func (a *hyperliquidAdapter) BuildUnsignedAction(
 		return buildUnsignedActionResponse{}, errors.New("instrument is required")
 	}
 
-	metaPayload, err := a.postJSON(r.Context(), "/info", map[string]any{
-		"type": "meta",
-	})
+	metaPayload, err := a.infoClient.Meta(r.Context())
 	if err != nil {
 		return buildUnsignedActionResponse{}, err
 	}
-	asset, err := resolvePerpAsset(metaPayload, coin)
+	asset, err := resolvePerpAssetFromSDK(metaPayload, coin)
 	if err != nil {
 		return buildUnsignedActionResponse{}, err
 	}
@@ -162,13 +183,11 @@ func (a *hyperliquidAdapter) BuildUnsignedAction(
 		}
 		price = strings.TrimSpace(*req.Order.LimitPrice)
 	case "market":
-		midPayload, midErr := a.postJSON(r.Context(), "/info", map[string]any{
-			"type": "allMids",
-		})
+		midPayload, midErr := a.infoClient.AllMids(r.Context())
 		if midErr != nil {
 			return buildUnsignedActionResponse{}, midErr
 		}
-		midString := stringField(midPayload, coin)
+		midString := strings.TrimSpace(midPayload[coin])
 		if midString == "" {
 			return buildUnsignedActionResponse{}, fmt.Errorf("failed to resolve mark price for %s", coin)
 		}
@@ -187,32 +206,43 @@ func (a *hyperliquidAdapter) BuildUnsignedAction(
 		return buildUnsignedActionResponse{}, errors.New("type must be market or limit")
 	}
 
-	orderWire := map[string]any{
-		"a": asset,
-		"b": isBuy,
-		"p": price,
-		"s": strings.TrimSpace(req.Order.Size),
-		"r": reduceOnly,
-		"t": map[string]any{
-			"limit": map[string]any{
-				"tif": tif,
-			},
+	orderWireType := hyperliquid.OrderWireType{
+		Limit: &hyperliquid.OrderWireTypeLimit{
+			Tif: hyperliquid.Tif(tif),
 		},
+	}
+	orderWireCanonical := hyperliquid.OrderWire{
+		Asset:      asset,
+		IsBuy:      isBuy,
+		LimitPx:    price,
+		Size:       strings.TrimSpace(req.Order.Size),
+		ReduceOnly: reduceOnly,
+		OrderType:  orderWireType,
 	}
 	if clientOrderID := strings.TrimSpace(req.Order.ClientOrderID); clientOrderID != "" {
-		orderWire["c"] = clientOrderID
+		orderWireCanonical.Cloid = &clientOrderID
 	}
-
-	action := map[string]any{
-		"type": "order",
-		"orders": []any{
-			orderWire,
-		},
-		"grouping": "na",
+	actionCanonical := hyperliquid.OrderAction{
+		Type:     "order",
+		Orders:   []hyperliquid.OrderWire{orderWireCanonical},
+		Grouping: string(hyperliquid.GroupingNA),
 	}
+	action, err := marshalActionToMap(actionCanonical)
+	if err != nil {
+		return buildUnsignedActionResponse{}, err
+	}
+	nonce := time.Now().UTC().UnixMilli()
 	unsignedExchangeRequest := map[string]any{
 		"action": action,
-		"nonce":  time.Now().UTC().UnixMilli(),
+		"nonce":  nonce,
+	}
+	typedDataJSON, _, err := buildHyperliquidSignTypedDataFromAction(
+		actionCanonical,
+		nonce,
+		a.isMainnet,
+	)
+	if err != nil {
+		return buildUnsignedActionResponse{}, err
 	}
 	orderID := strings.TrimSpace(req.Order.ClientOrderID)
 	if orderID == "" {
@@ -225,13 +255,60 @@ func (a *hyperliquidAdapter) BuildUnsignedAction(
 		SigningPolicy: "client-signing-only",
 		Disclaimer:    clientSigningOnlyDisclaimer,
 		UnsignedActionPayload: unsignedActionPayload{
-			ID:            payloadID,
-			AccountID:     req.Order.AccountID,
-			Venue:         req.Order.Venue,
-			Kind:          "perp_order_action",
-			Action:        unsignedExchangeRequest,
-			WalletRequest: walletRequestPayload{Method: "wallet_perp_submitAction", Params: []any{unsignedExchangeRequest}},
+			ID:        payloadID,
+			AccountID: req.Order.AccountID,
+			Venue:     req.Order.Venue,
+			Kind:      "perp_order_action",
+			Action:    unsignedExchangeRequest,
+			WalletRequest: walletRequestPayload{
+				Method: "eth_signTypedData_v4",
+				Params: []any{req.Order.AccountID, typedDataJSON},
+			},
 		},
+	}, nil
+}
+
+func (a *hyperliquidAdapter) SubmitSignedAction(
+	r *http.Request,
+	req submitSignedActionRequest,
+) (submitSignedActionResponse, error) {
+	submitPayload := make(map[string]any, len(req.UnsignedActionPayload.Action)+1)
+	for key, value := range req.UnsignedActionPayload.Action {
+		submitPayload[key] = value
+	}
+
+	signature, err := parseHyperliquidWalletSignature(req.Signature)
+	if err != nil {
+		return submitSignedActionResponse{}, err
+	}
+	submitPayload["signature"] = signature
+
+	exchangeResponse, err := a.postJSON(r.Context(), "/exchange", submitPayload)
+	if err != nil {
+		return submitSignedActionResponse{}, err
+	}
+
+	actionHash := extractConnectionIDFromWalletRequest(req.UnsignedActionPayload.WalletRequest)
+	if strings.TrimSpace(actionHash) == "" {
+		computedHash, hashErr := hyperliquidConnectionIDFromUnsignedAction(req.UnsignedActionPayload.Action)
+		if hashErr == nil {
+			actionHash = computedHash
+		}
+	}
+
+	status := normalizeHyperliquidSubmissionStatus(exchangeResponse)
+	venueOrderID := extractHyperliquidVenueOrderID(exchangeResponse)
+	if strings.TrimSpace(actionHash) == "" {
+		actionHash = fmt.Sprintf("hl_submit_%d", time.Now().UTC().UnixNano())
+	}
+
+	return submitSignedActionResponse{
+		OrderID:      req.OrderID,
+		ActionHash:   actionHash,
+		Venue:        venueHyperliquid,
+		Status:       status,
+		VenueOrderID: venueOrderID,
+		Source:       string(venueHyperliquid),
 	}, nil
 }
 
@@ -372,6 +449,13 @@ func (a *asterMockAdapter) BuildUnsignedAction(
 			},
 		},
 	}, nil
+}
+
+func (a *asterMockAdapter) SubmitSignedAction(
+	_ *http.Request,
+	_ submitSignedActionRequest,
+) (submitSignedActionResponse, error) {
+	return submitSignedActionResponse{}, errSignedSubmitNotSupported
 }
 
 func (a *asterMockAdapter) GetPositions(
@@ -663,4 +747,387 @@ func resolvePerpAsset(metaPayload map[string]any, coin string) (int, error) {
 	}
 
 	return -1, fmt.Errorf("unsupported instrument %s for hyperliquid", coin)
+}
+
+func resolvePerpAssetFromSDK(metaPayload *hyperliquid.Meta, coin string) (int, error) {
+	if metaPayload == nil {
+		return -1, errors.New("hyperliquid meta response is missing universe")
+	}
+	for index, asset := range metaPayload.Universe {
+		if strings.EqualFold(strings.TrimSpace(asset.Name), coin) {
+			return index, nil
+		}
+	}
+	return -1, fmt.Errorf("unsupported instrument %s for hyperliquid", coin)
+}
+
+func isHyperliquidMainnetURL(baseURL string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(baseURL))
+	if normalized == "" {
+		return true
+	}
+	return !strings.Contains(normalized, "testnet")
+}
+
+func parseActionNonce(rawNonce any) (int64, error) {
+	switch value := rawNonce.(type) {
+	case float64:
+		return int64(value), nil
+	case int64:
+		return value, nil
+	case int:
+		return int64(value), nil
+	case json.Number:
+		parsed, err := value.Int64()
+		if err != nil {
+			return 0, errors.New("unsignedActionPayload.action.nonce must be an integer")
+		}
+		return parsed, nil
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err != nil {
+			return 0, errors.New("unsignedActionPayload.action.nonce must be an integer")
+		}
+		return parsed, nil
+	default:
+		return 0, errors.New("unsignedActionPayload.action.nonce must be an integer")
+	}
+}
+
+func buildHyperliquidSignTypedData(unsignedExchangeRequest map[string]any, isMainnet bool) (string, string, error) {
+	action, hasAction := unsignedExchangeRequest["action"]
+	if !hasAction {
+		return "", "", errors.New("unsignedActionPayload.action.action must be a non-empty object")
+	}
+	nonce, err := parseActionNonce(unsignedExchangeRequest["nonce"])
+	if err != nil {
+		return "", "", err
+	}
+
+	return buildHyperliquidSignTypedDataFromAction(action, nonce, isMainnet)
+}
+
+func buildHyperliquidSignTypedDataFromAction(action any, nonce int64, isMainnet bool) (string, string, error) {
+	connectionID, err := hyperliquidConnectionID(action, nonce)
+	if err != nil {
+		return "", "", err
+	}
+
+	source := "b"
+	if isMainnet {
+		source = "a"
+	}
+	typedData := map[string]any{
+		"domain": map[string]any{
+			"name":              "Exchange",
+			"version":           "1",
+			"chainId":           1337,
+			"verifyingContract": "0x0000000000000000000000000000000000000000",
+		},
+		"types": map[string]any{
+			"Agent": []map[string]string{
+				{
+					"name": "source",
+					"type": "string",
+				},
+				{
+					"name": "connectionId",
+					"type": "bytes32",
+				},
+			},
+			"EIP712Domain": []map[string]string{
+				{
+					"name": "name",
+					"type": "string",
+				},
+				{
+					"name": "version",
+					"type": "string",
+				},
+				{
+					"name": "chainId",
+					"type": "uint256",
+				},
+				{
+					"name": "verifyingContract",
+					"type": "address",
+				},
+			},
+		},
+		"primaryType": "Agent",
+		"message": map[string]string{
+			"source":       source,
+			"connectionId": connectionID,
+		},
+	}
+
+	payload, err := json.Marshal(typedData)
+	if err != nil {
+		return "", "", err
+	}
+	return string(payload), connectionID, nil
+}
+
+func hyperliquidConnectionIDFromUnsignedAction(unsignedExchangeRequest map[string]any) (string, error) {
+	action, ok := unsignedExchangeRequest["action"]
+	if !ok {
+		return "", errors.New("unsignedActionPayload.action.action must be a non-empty object")
+	}
+	nonce, err := parseActionNonce(unsignedExchangeRequest["nonce"])
+	if err != nil {
+		return "", err
+	}
+
+	return hyperliquidConnectionID(action, nonce)
+}
+
+func hyperliquidConnectionID(action any, nonce int64) (string, error) {
+	if action == nil {
+		return "", errors.New("unsignedActionPayload.action.action must be a non-empty object")
+	}
+	hash, err := hyperliquidActionHash(action, nonce, "", nil)
+	if err != nil {
+		return "", err
+	}
+	return "0x" + hex.EncodeToString(hash), nil
+}
+
+func hyperliquidActionHash(
+	action any,
+	nonce int64,
+	vaultAddress string,
+	expiresAfter *int64,
+) ([]byte, error) {
+	var buffer bytes.Buffer
+	encoder := msgpack.NewEncoder(&buffer)
+	encoder.UseCompactInts(true)
+	encoder.SetSortMapKeys(false)
+	if err := encoder.Encode(normalizeActionForSigningHash(action)); err != nil {
+		return nil, fmt.Errorf("failed to encode action: %w", err)
+	}
+
+	data := convertMsgpackStr16ToStr8(buffer.Bytes())
+	nonceBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(nonceBytes, uint64(nonce))
+	data = append(data, nonceBytes...)
+
+	if strings.TrimSpace(vaultAddress) == "" {
+		data = append(data, 0x00)
+	} else {
+		data = append(data, 0x01)
+		addressBytes, decodeErr := hex.DecodeString(strings.TrimPrefix(vaultAddress, "0x"))
+		if decodeErr != nil {
+			return nil, fmt.Errorf("invalid vault address: %w", decodeErr)
+		}
+		data = append(data, addressBytes...)
+	}
+
+	if expiresAfter != nil {
+		data = append(data, 0x00)
+		expiresAfterBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(expiresAfterBytes, uint64(*expiresAfter))
+		data = append(data, expiresAfterBytes...)
+	}
+
+	return crypto.Keccak256(data), nil
+}
+
+func normalizeActionForSigningHash(action any) any {
+	actionRecord, isRecord := action.(map[string]any)
+	if !isRecord {
+		return action
+	}
+	actionType := strings.ToLower(strings.TrimSpace(stringField(actionRecord, "type")))
+	switch actionType {
+	case "order":
+		payloadBytes, err := json.Marshal(actionRecord)
+		if err != nil {
+			return action
+		}
+		var canonical hyperliquid.OrderAction
+		if unmarshalErr := json.Unmarshal(payloadBytes, &canonical); unmarshalErr != nil {
+			return action
+		}
+		return canonical
+	default:
+		return action
+	}
+}
+
+func convertMsgpackStr16ToStr8(data []byte) []byte {
+	result := make([]byte, 0, len(data))
+	for index := 0; index < len(data); {
+		current := data[index]
+		if current == 0xda && index+2 < len(data) {
+			length := (int(data[index+1]) << 8) | int(data[index+2])
+			if length < 256 {
+				result = append(result, 0xd9, byte(length))
+				index += 3
+				if index+length <= len(data) {
+					result = append(result, data[index:index+length]...)
+					index += length
+				}
+				continue
+			}
+		}
+		result = append(result, current)
+		index++
+	}
+	return result
+}
+
+func parseHyperliquidWalletSignature(signature string) (map[string]any, error) {
+	trimmed := strings.ToLower(strings.TrimSpace(signature))
+	if len(trimmed) != 132 || !strings.HasPrefix(trimmed, "0x") {
+		return nil, errors.New("signature must be a 65-byte hex value with 0x prefix")
+	}
+	raw, err := hex.DecodeString(trimmed[2:])
+	if err != nil {
+		return nil, errors.New("signature must be valid hex")
+	}
+	if len(raw) != 65 {
+		return nil, errors.New("signature must be a 65-byte hex value with 0x prefix")
+	}
+
+	v := int(raw[64])
+	if v < 27 {
+		v += 27
+	}
+
+	return map[string]any{
+		"r": "0x" + hex.EncodeToString(raw[0:32]),
+		"s": "0x" + hex.EncodeToString(raw[32:64]),
+		"v": v,
+	}, nil
+}
+
+func extractConnectionIDFromWalletRequest(walletRequest walletRequestPayload) string {
+	if len(walletRequest.Params) < 2 {
+		return ""
+	}
+	typedDataRaw, ok := walletRequest.Params[1].(string)
+	if !ok {
+		return ""
+	}
+
+	var typedData map[string]any
+	if err := json.Unmarshal([]byte(typedDataRaw), &typedData); err != nil {
+		return ""
+	}
+	message, ok := typedData["message"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	connectionID, ok := message["connectionId"].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(connectionID)
+}
+
+func marshalActionToMap(action any) (map[string]any, error) {
+	payload, err := json.Marshal(action)
+	if err != nil {
+		return nil, err
+	}
+	var actionMap map[string]any
+	if err := json.Unmarshal(payload, &actionMap); err != nil {
+		return nil, err
+	}
+	return actionMap, nil
+}
+
+func normalizeHyperliquidSubmissionStatus(exchangeResponse map[string]any) string {
+	status := strings.ToLower(strings.TrimSpace(stringField(exchangeResponse, "status")))
+	if status == "ok" || status == "" {
+		status = "submitted"
+	}
+
+	if hasHyperliquidOrderError(exchangeResponse) {
+		return "rejected"
+	}
+	return status
+}
+
+func hasHyperliquidOrderError(exchangeResponse map[string]any) bool {
+	response, ok := exchangeResponse["response"].(map[string]any)
+	if !ok {
+		return false
+	}
+	data, ok := response["data"].(map[string]any)
+	if !ok {
+		return false
+	}
+	statuses, ok := data["statuses"].([]any)
+	if !ok || len(statuses) == 0 {
+		return false
+	}
+	firstStatus, ok := statuses[0].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, hasError := firstStatus["error"]
+	return hasError
+}
+
+func extractHyperliquidVenueOrderID(exchangeResponse map[string]any) *string {
+	response, ok := exchangeResponse["response"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	data, ok := response["data"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	statuses, ok := data["statuses"].([]any)
+	if !ok || len(statuses) == 0 {
+		return nil
+	}
+	firstStatus, ok := statuses[0].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	restingOrderID := extractNumericID(firstStatus, "resting", "oid")
+	if restingOrderID != nil {
+		return restingOrderID
+	}
+	filledOrderID := extractNumericID(firstStatus, "filled", "oid")
+	if filledOrderID != nil {
+		return filledOrderID
+	}
+
+	return nil
+}
+
+func extractNumericID(values map[string]any, parentKey string, key string) *string {
+	parent, ok := values[parentKey].(map[string]any)
+	if !ok {
+		return nil
+	}
+	switch value := parent[key].(type) {
+	case float64:
+		id := strconv.FormatInt(int64(value), 10)
+		return &id
+	case int64:
+		id := strconv.FormatInt(value, 10)
+		return &id
+	case int:
+		id := strconv.Itoa(value)
+		return &id
+	case json.Number:
+		id := value.String()
+		if strings.TrimSpace(id) == "" {
+			return nil
+		}
+		return &id
+	case string:
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return nil
+		}
+		return &trimmed
+	default:
+		return nil
+	}
 }

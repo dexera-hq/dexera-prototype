@@ -16,6 +16,8 @@ type fakeVenueAdapter struct {
 	previewError     error
 	unsignedResponse buildUnsignedActionResponse
 	unsignedError    error
+	submitResponse   submitSignedActionResponse
+	submitError      error
 	positionsResp    perpPositionsResponse
 	positionsErr     error
 	eligibilityResp  walletVenueEligibilityResult
@@ -28,6 +30,10 @@ func (a fakeVenueAdapter) PreviewOrder(_ *http.Request, _ buildUnsignedActionReq
 
 func (a fakeVenueAdapter) BuildUnsignedAction(_ *http.Request, _ buildUnsignedActionRequest) (buildUnsignedActionResponse, error) {
 	return a.unsignedResponse, a.unsignedError
+}
+
+func (a fakeVenueAdapter) SubmitSignedAction(_ *http.Request, _ submitSignedActionRequest) (submitSignedActionResponse, error) {
+	return a.submitResponse, a.submitError
 }
 
 func (a fakeVenueAdapter) GetPositions(_ *http.Request, _ perpPositionsQuery) (perpPositionsResponse, error) {
@@ -552,7 +558,7 @@ func TestHyperliquidBuildUnsignedActionIncludesWalletRequest(t *testing.T) {
 						"instrument": "BTC-PERP",
 					},
 					WalletRequest: walletRequestPayload{
-						Method: "wallet_perp_submitAction",
+						Method: "eth_signTypedData_v4",
 						Params: []any{
 							map[string]any{"payloadId": "uap_hl_001"},
 						},
@@ -592,7 +598,7 @@ func TestHyperliquidBuildUnsignedActionIncludesWalletRequest(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected walletRequest object, got %T", unsignedPayload["walletRequest"])
 	}
-	if walletRequest["method"] != "wallet_perp_submitAction" {
+	if walletRequest["method"] != "eth_signTypedData_v4" {
 		t.Fatalf("expected walletRequest method, got %v", walletRequest["method"])
 	}
 }
@@ -792,4 +798,132 @@ func TestHyperliquidPositionsPassesThroughClientErrors(t *testing.T) {
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("expected status 422, got %d", rr.Code)
 	}
+}
+
+func TestSubmitSignedActionHyperliquid(t *testing.T) {
+	previousResolver := venueAdapterResolver
+	venueAdapterResolver = func(venue venueID) (perpVenueAdapter, error) {
+		if venue != venueHyperliquid {
+			t.Fatalf("expected venueHyperliquid, got %s", venue)
+		}
+		return fakeVenueAdapter{
+			submitResponse: submitSignedActionResponse{
+				OrderID:      "ord_hl_001",
+				ActionHash:   "0xabc123",
+				Venue:        venueHyperliquid,
+				Status:       "submitted",
+				VenueOrderID: stringPtr("918273645"),
+				Source:       "hyperliquid",
+			},
+		}, nil
+	}
+	defer func() {
+		venueAdapterResolver = previousResolver
+	}()
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/actions/submit",
+		bytes.NewBufferString(`{
+			"orderId":"ord_hl_001",
+			"signature":"0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b",
+			"unsignedActionPayload":{
+				"id":"uap_hl_001",
+				"accountId":"0x0000000000000000000000000000000000000002",
+				"venue":"HYPERLIQUID",
+				"kind":"perp_order_action",
+				"action":{
+					"action":{"type":"order","orders":[{"a":0}]},
+					"nonce":1733000000000
+				},
+				"walletRequest":{"method":"eth_signTypedData_v4"}
+			}
+		}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected valid JSON body: %v", err)
+	}
+	if body["orderId"] != "ord_hl_001" {
+		t.Fatalf("expected orderId=ord_hl_001, got %v", body["orderId"])
+	}
+	if body["actionHash"] != "0xabc123" {
+		t.Fatalf("expected actionHash=0xabc123, got %v", body["actionHash"])
+	}
+	if body["status"] != "submitted" {
+		t.Fatalf("expected status=submitted, got %v", body["status"])
+	}
+}
+
+func TestSubmitSignedActionRejectsInvalidSignature(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/actions/submit",
+		bytes.NewBufferString(`{
+			"orderId":"ord_hl_001",
+			"signature":"0x1234",
+			"unsignedActionPayload":{
+				"id":"uap_hl_001",
+				"accountId":"0x0000000000000000000000000000000000000002",
+				"venue":"hyperliquid",
+				"kind":"perp_order_action",
+				"action":{
+					"action":{"type":"order","orders":[{"a":0}]},
+					"nonce":1733000000000
+				},
+				"walletRequest":{"method":"eth_signTypedData_v4"}
+			}
+		}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+}
+
+func TestSubmitSignedActionAsterNotSupported(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/actions/submit",
+		bytes.NewBufferString(`{
+			"orderId":"ord_as_001",
+			"signature":"0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b",
+			"unsignedActionPayload":{
+				"id":"uap_as_001",
+				"accountId":"0x0000000000000000000000000000000000000002",
+				"venue":"aster",
+				"kind":"perp_order_action",
+				"action":{
+					"action":{"type":"order","orders":[{"a":0}]},
+					"nonce":1733000000000
+				},
+				"walletRequest":{"method":"wallet_perp_submitAction"}
+			}
+		}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotImplemented {
+		t.Fatalf("expected status 501, got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
