@@ -1,8 +1,8 @@
 // AUTO-GENERATED FILE. DO NOT EDIT.
 // Source: contracts/openapi/bff.openapi.yaml
 
-export type BffPublicPath = '/health' | '/api/v1/placeholder' | '/api/v1/wallet/challenge' | '/api/v1/wallet/verify' | '/api/v1/perp/orders/preview' | '/api/v1/perp/actions/unsigned' | '/api/v1/perp/actions/submit' | '/api/v1/perp/positions';
-export declare const BFF_PUBLIC_PATHS: readonly ["/health","/api/v1/placeholder","/api/v1/wallet/challenge","/api/v1/wallet/verify","/api/v1/perp/orders/preview","/api/v1/perp/actions/unsigned","/api/v1/perp/actions/submit","/api/v1/perp/positions"];
+export type BffPublicPath = '/health' | '/api/v1/placeholder' | '/api/v1/wallet/challenge' | '/api/v1/wallet/verify' | '/api/v1/perp/orders/preview' | '/api/v1/perp/actions/unsigned' | '/api/v1/perp/actions/submit' | '/api/v1/perp/positions' | '/api/v1/perp/orders/status';
+export declare const BFF_PUBLIC_PATHS: readonly ["/health","/api/v1/placeholder","/api/v1/wallet/challenge","/api/v1/wallet/verify","/api/v1/perp/orders/preview","/api/v1/perp/actions/unsigned","/api/v1/perp/actions/submit","/api/v1/perp/positions","/api/v1/perp/orders/status"];
 
 export type BffVenueId = 'hyperliquid' | 'aster';
 export type BffPerpOrderSide = 'buy' | 'sell';
@@ -137,6 +137,18 @@ export interface BffPerpPositionsResponse {
   accountId: string;
   venue: BffVenueId;
   positions: BffPerpPosition[];
+  source: string;
+}
+
+export interface BffPerpOrderStatusResponse {
+  accountId: string;
+  venue: BffVenueId;
+  orderId?: string;
+  venueOrderId: string;
+  status: string;
+  venueStatus: string;
+  isTerminal: boolean;
+  lastUpdatedAt: string;
   source: string;
 }
 

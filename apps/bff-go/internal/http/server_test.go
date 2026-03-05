@@ -20,6 +20,8 @@ type fakeVenueAdapter struct {
 	submitError      error
 	positionsResp    perpPositionsResponse
 	positionsErr     error
+	orderStatusResp  perpOrderStatusResponse
+	orderStatusErr   error
 	eligibilityResp  walletVenueEligibilityResult
 	eligibilityErr   error
 }
@@ -38,6 +40,13 @@ func (a fakeVenueAdapter) SubmitSignedAction(_ *http.Request, _ submitSignedActi
 
 func (a fakeVenueAdapter) GetPositions(_ *http.Request, _ perpPositionsQuery) (perpPositionsResponse, error) {
 	return a.positionsResp, a.positionsErr
+}
+
+func (a fakeVenueAdapter) GetOrderStatus(
+	_ *http.Request,
+	_ perpOrderStatusQuery,
+) (perpOrderStatusResponse, error) {
+	return a.orderStatusResp, a.orderStatusErr
 }
 
 func (a fakeVenueAdapter) CheckWalletEligibility(_ *http.Request, _ string) (walletVenueEligibilityResult, error) {
@@ -954,6 +963,91 @@ func TestSubmitSignedActionAsterNotSupported(t *testing.T) {
 
 	if rr.Code != http.StatusNotImplemented {
 		t.Fatalf("expected status 501, got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestPerpOrderStatusHyperliquid(t *testing.T) {
+	previousResolver := venueAdapterResolver
+	venueAdapterResolver = func(venue venueID) (perpVenueAdapter, error) {
+		if venue != venueHyperliquid {
+			t.Fatalf("expected venueHyperliquid, got %s", venue)
+		}
+		return fakeVenueAdapter{
+			orderStatusResp: perpOrderStatusResponse{
+				AccountID:     "acct_001",
+				Venue:         venueHyperliquid,
+				OrderID:       "ord_hl_001",
+				VenueOrderID:  "918273645",
+				Status:        "open",
+				VenueStatus:   "open",
+				IsTerminal:    false,
+				LastUpdatedAt: "2026-03-05T12:00:00Z",
+				Source:        "hyperliquid",
+			},
+		}, nil
+	}
+	defer func() {
+		venueAdapterResolver = previousResolver
+	}()
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/perp/orders/status?accountId=acct_001&venue=hyperliquid&venueOrderId=918273645&orderId=ord_hl_001",
+		nil,
+	)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected valid JSON body: %v", err)
+	}
+	if body["status"] != "open" {
+		t.Fatalf("expected status=open, got %v", body["status"])
+	}
+	if body["venueOrderId"] != "918273645" {
+		t.Fatalf("expected venueOrderId=918273645, got %v", body["venueOrderId"])
+	}
+}
+
+func TestPerpOrderStatusRejectsNonHyperliquidVenue(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/perp/orders/status?accountId=acct_001&venue=aster&venueOrderId=918273645",
+		nil,
+	)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "hyperliquid only") {
+		t.Fatalf("expected hyperliquid-only error, got body=%s", rr.Body.String())
+	}
+}
+
+func TestPerpOrderStatusRequiresVenueOrderID(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/perp/orders/status?accountId=acct_001&venue=hyperliquid",
+		nil,
+	)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "missing venueOrderId") {
+		t.Fatalf("expected missing venueOrderId error, got body=%s", rr.Body.String())
 	}
 }
 
