@@ -130,6 +130,21 @@ export interface BffBuildUnsignedActionResponse {
   unsignedActionPayload: BffUnsignedActionPayload;
 }
 
+export interface BffSubmitSignedActionRequest {
+  orderId: string;
+  signature: string;
+  unsignedActionPayload: BffUnsignedActionPayload;
+}
+
+export interface BffSubmitSignedActionResponse {
+  orderId: string;
+  actionHash: string;
+  venue: BffVenueId;
+  status: string;
+  venueOrderId?: string;
+  source: string;
+}
+
 export interface BffPerpPosition {
   positionId: string;
   accountId: string;
@@ -261,6 +276,21 @@ export interface BffBuildUnsignedActionResponse {
   signingPolicy: 'client-signing-only';
   disclaimer: string;
   unsignedActionPayload: BffUnsignedActionPayload;
+}
+
+export interface BffSubmitSignedActionRequest {
+  orderId: string;
+  signature: string;
+  unsignedActionPayload: BffUnsignedActionPayload;
+}
+
+export interface BffSubmitSignedActionResponse {
+  orderId: string;
+  actionHash: string;
+  venue: BffVenueId;
+  status: string;
+  venueOrderId?: string;
+  source: string;
 }
 
 export interface BffPerpPosition {

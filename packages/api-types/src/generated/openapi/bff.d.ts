@@ -8,6 +8,7 @@ export type BffPublicPath =
   | '/api/v1/wallet/verify'
   | '/api/v1/perp/orders/preview'
   | '/api/v1/perp/actions/unsigned'
+  | '/api/v1/perp/actions/submit'
   | '/api/v1/perp/positions';
 export declare const BFF_PUBLIC_PATHS: readonly [
   '/health',
@@ -16,6 +17,7 @@ export declare const BFF_PUBLIC_PATHS: readonly [
   '/api/v1/wallet/verify',
   '/api/v1/perp/orders/preview',
   '/api/v1/perp/actions/unsigned',
+  '/api/v1/perp/actions/submit',
   '/api/v1/perp/positions',
 ];
 
@@ -115,6 +117,21 @@ export interface BffBuildUnsignedActionResponse {
   signingPolicy: 'client-signing-only';
   disclaimer: string;
   unsignedActionPayload: BffUnsignedActionPayload;
+}
+
+export interface BffSubmitSignedActionRequest {
+  orderId: string;
+  signature: string;
+  unsignedActionPayload: BffUnsignedActionPayload;
+}
+
+export interface BffSubmitSignedActionResponse {
+  orderId: string;
+  actionHash: string;
+  venue: BffVenueId;
+  status: string;
+  venueOrderId?: string;
+  source: string;
 }
 
 export interface BffPerpPosition {

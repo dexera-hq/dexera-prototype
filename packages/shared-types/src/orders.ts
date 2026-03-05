@@ -50,6 +50,20 @@ export interface BuildUnsignedActionResponse {
   unsignedActionPayload: UnsignedActionPayload;
 }
 
+export interface SubmitSignedActionRequest {
+  orderId: string;
+  signature: string;
+  unsignedActionPayload: UnsignedActionPayload;
+}
+
+export interface SubmitSignedActionResponse extends Wallet {
+  orderId: string;
+  actionHash: string;
+  status: string;
+  venueOrderId?: string;
+  source: string;
+}
+
 export interface Fill extends Wallet {
   id: string;
   orderId: string;
