@@ -8,7 +8,10 @@ import { Input } from '@/components/ui/input';
 import type { WorkspaceMarketDataState } from '@/components/workspace/use-workspace-market-data';
 import { buildUnsignedAction } from '@/lib/wallet/build-unsigned-transaction';
 import { getWalletVenueLabel, SUPPORTED_VENUES } from '@/lib/wallet/chains';
-import { signAndSubmitRuntimeSlotAction } from '@/lib/wallet/multi-session-runtime';
+import {
+  signAndSubmitRuntimeSlotAction,
+  signRuntimeSlotActionPayload,
+} from '@/lib/wallet/multi-session-runtime';
 import {
   buildPerpOrderRequest,
   canSubmitOrderEntry,
@@ -23,6 +26,7 @@ import {
   resolveLimitPriceAutofill,
 } from '@/lib/wallet/order-entry-panel-state';
 import { submitUnsignedAction } from '@/lib/wallet/sign-unsigned-transaction';
+import { submitSignedAction } from '@/lib/wallet/submit-signed-action';
 import {
   SIGNING_ONLY_DISCLAIMER_LINES,
   TransactionGuardrailError,
@@ -277,23 +281,60 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
     setIsSubmitting(true);
     setExecutionState({
       status: 'pending',
-      message: 'Submitting unsigned payload to the connected wallet runtime...',
+      message:
+        activeSlot.venue === 'hyperliquid'
+          ? 'Awaiting wallet signature for Hyperliquid action...'
+          : 'Submitting unsigned payload to the connected wallet runtime...',
     });
 
     try {
-      const submission = await submitUnsignedAction({
-        orderId: previewResponse.orderId,
-        payload: previewResponse.unsignedActionPayload,
-        activeWallet: activeSlot,
-        submitter: {
-          sendAction: async ({ accountId, payload }) =>
-            signAndSubmitRuntimeSlotAction({
-              slotId: activeSlot.id,
-              accountId,
-              payload,
-            }),
-        },
-      });
+      const submission =
+        activeSlot.venue === 'hyperliquid'
+          ? await (async () => {
+              const signature = await signRuntimeSlotActionPayload({
+                slotId: activeSlot.id,
+                accountId: activeSlot.accountId,
+                payload: previewResponse.unsignedActionPayload,
+              });
+
+              setExecutionState({
+                status: 'pending',
+                message: 'Submitting signed Hyperliquid action to venue...',
+              });
+
+              const venueSubmission = await submitSignedAction({
+                orderId: previewResponse.orderId,
+                signature,
+                unsignedActionPayload: previewResponse.unsignedActionPayload,
+              });
+
+              if (venueSubmission.status.trim().toLowerCase() !== 'submitted') {
+                throw new Error(`Venue submission returned status ${venueSubmission.status}.`);
+              }
+
+              return {
+                orderId: venueSubmission.orderId,
+                actionHash: venueSubmission.actionHash,
+                unsignedActionPayloadId: previewResponse.unsignedActionPayload.id,
+                accountId: activeSlot.accountId,
+                venue: activeSlot.venue,
+                venueOrderId: venueSubmission.venueOrderId,
+              } satisfies ActionSubmissionResult;
+            })()
+          : await submitUnsignedAction({
+              orderId: previewResponse.orderId,
+              payload: previewResponse.unsignedActionPayload,
+              activeWallet: activeSlot,
+              submitter: {
+                sendAction: async ({ accountId, payload }) => ({
+                  actionHash: await signAndSubmitRuntimeSlotAction({
+                    slotId: activeSlot.id,
+                    accountId,
+                    payload,
+                  }),
+                }),
+              },
+            });
       const receipt: OrderEntrySubmissionReceipt = {
         ...submission,
         submittedAt: new Date().toISOString(),
@@ -303,7 +344,10 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
 
       setExecutionState({
         status: 'success',
-        message: `Submitted order ${submission.orderId} with action hash ${submission.actionHash}.`,
+        message:
+          submission.venueOrderId && submission.venueOrderId.trim().length > 0
+            ? `Submitted order ${submission.orderId} with action hash ${submission.actionHash} (venue order ${submission.venueOrderId}).`
+            : `Submitted order ${submission.orderId} with action hash ${submission.actionHash}.`,
       });
     } catch (error) {
       const message =
@@ -522,7 +566,9 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
         <p className="order-entry-state-message">{executionState.message}</p>
         {latestSubmission ? (
           <p className="order-entry-state-message">
-            Last submission: order {latestSubmission.orderId} / hash {latestSubmission.actionHash}.
+            Last submission: order {latestSubmission.orderId} / hash {latestSubmission.actionHash}
+            {latestSubmission.venueOrderId ? ` / venue order ${latestSubmission.venueOrderId}` : ''}
+            .
           </p>
         ) : null}
         {previewBlockingMessage ? (

@@ -10,9 +10,10 @@ import type { ActionSubmissionResult, WalletSlot } from './types';
 
 export interface ClientActionSubmitter {
   sendAction: (parameters: {
+    orderId: string;
     accountId: string;
     payload: UnsignedActionPayload;
-  }) => Promise<string>;
+  }) => Promise<{ actionHash: string; orderId?: string; venueOrderId?: string }>;
 }
 
 export async function submitUnsignedAction(parameters: {
@@ -37,12 +38,14 @@ export async function submitUnsignedAction(parameters: {
     );
   }
 
-  const actionHash = await parameters.submitter.sendAction({
+  const submission = await parameters.submitter.sendAction({
+    orderId,
     accountId: activeWallet.accountId,
     payload: parameters.payload,
   });
+  const actionHash = submission.actionHash.trim();
 
-  if (actionHash.trim().length === 0) {
+  if (actionHash.length === 0) {
     throw new TransactionGuardrailError(
       'signing-failed',
       'Wallet submission returned an empty action hash.',
@@ -50,10 +53,11 @@ export async function submitUnsignedAction(parameters: {
   }
 
   return {
-    orderId,
+    orderId: submission.orderId?.trim() || orderId,
     actionHash,
     unsignedActionPayloadId: parameters.payload.id,
     accountId: activeWallet.accountId,
     venue: activeWallet.venue,
+    venueOrderId: submission.venueOrderId?.trim() || undefined,
   };
 }

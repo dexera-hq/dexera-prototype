@@ -60,6 +60,7 @@ export interface ActionSubmissionResult {
   unsignedActionPayloadId: string;
   accountId: string;
   venue: VenueId;
+  venueOrderId?: string;
 }
 
 export type ConnectWalletReason =

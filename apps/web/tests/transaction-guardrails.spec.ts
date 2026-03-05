@@ -106,7 +106,9 @@ describe('transaction guardrails', () => {
         },
         activeWallet,
         submitter: {
-          sendAction: async () => 'action_hash_1',
+          sendAction: async () => ({
+            actionHash: 'action_hash_1',
+          }),
         },
       });
 
