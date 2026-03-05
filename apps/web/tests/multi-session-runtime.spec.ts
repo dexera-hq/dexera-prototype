@@ -316,6 +316,9 @@ describe('multi-session runtime wallet connections', () => {
       if (method === 'eth_requestAccounts') {
         return ['0xabc123'];
       }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
       if (method === 'eth_signTypedData_v4') {
         return '0x' + '22'.repeat(65);
       }
@@ -366,6 +369,9 @@ describe('multi-session runtime wallet connections', () => {
       if (method === 'eth_requestAccounts') {
         return ['0xabc123'];
       }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
       if (method === 'eth_chainId') {
         return '0x66eee';
       }
@@ -414,6 +420,65 @@ describe('multi-session runtime wallet connections', () => {
     });
   });
 
+  it('fails when wallet account changes during signing chain switch', async () => {
+    let accountCalls = 0;
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        accountCalls += 1;
+        return accountCalls === 1 ? ['0xabc123'] : ['0xdef456'];
+      }
+      if (method === 'eth_chainId') {
+        return '0x66eee';
+      }
+      if (method === 'wallet_switchEthereumChain') {
+        return null;
+      }
+      if (method === 'eth_signTypedData_v4') {
+        return '0x' + '99'.repeat(65);
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    await expect(
+      signRuntimeSlotActionPayload({
+        slotId: 'slot-g',
+        accountId: '0xabc123',
+        payload: {
+          id: 'uap_hl_typed_switch_account',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            action: {
+              type: 'order',
+            },
+            nonce: 1733000000009,
+          },
+          walletRequest: {
+            method: 'eth_signTypedData_v4',
+            params: ['0xabc123', '{"domain":{"chainId":1337},"types":{}}'],
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Wallet selected account 0xdef456 does not match expected account 0xabc123. Switch wallet account and retry.',
+    );
+  });
+
   it('adds missing chain through configured rpc and retries switch before signing', async () => {
     process.env.NEXT_PUBLIC_HYPERLIQUID_SIGNING_CHAIN_RPC_URL = 'http://127.0.0.1:8545';
     let switchAttempts = 0;
@@ -424,6 +489,9 @@ describe('multi-session runtime wallet connections', () => {
           return [{ parentCapability: 'eth_accounts' }];
         }
         if (method === 'eth_requestAccounts') {
+          return ['0xabc123'];
+        }
+        if (method === 'eth_accounts') {
           return ['0xabc123'];
         }
         if (method === 'eth_chainId') {
@@ -498,6 +566,9 @@ describe('multi-session runtime wallet connections', () => {
       if (method === 'eth_requestAccounts') {
         return ['0xabc123'];
       }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
       if (method === 'eth_chainId') {
         return '0x66eee';
       }
@@ -538,6 +609,102 @@ describe('multi-session runtime wallet connections', () => {
       }),
     ).rejects.toThrow(
       'Wallet does not have chain 1337 (0x539) configured. Set NEXT_PUBLIC_HYPERLIQUID_SIGNING_CHAIN_RPC_URL and retry.',
+    );
+  });
+
+  it('fails when typed-data signer account does not match the selected slot account', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xabc123'];
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    await expect(
+      signRuntimeSlotActionPayload({
+        slotId: 'slot-g',
+        accountId: '0xabc123',
+        payload: {
+          id: 'uap_hl_typed_5',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            action: {
+              type: 'order',
+            },
+            nonce: 1733000000004,
+          },
+          walletRequest: {
+            method: 'eth_signTypedData_v4',
+            params: ['0xdef456', '{"domain":{"chainId":1337},"types":{}}'],
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Unsigned action payload signer account does not match the selected account.',
+    );
+  });
+
+  it('fails when provider selected account does not match the selected slot account', async () => {
+    const request = vi.fn().mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') {
+        return [{ parentCapability: 'eth_accounts' }];
+      }
+      if (method === 'eth_requestAccounts') {
+        return ['0xabc123'];
+      }
+      if (method === 'eth_accounts') {
+        return ['0xdef456'];
+      }
+      return [];
+    });
+
+    setRuntimeWindow({
+      ethereum: {
+        providers: [{ request, isMetaMask: true }],
+      },
+    });
+
+    await connectRuntimeSlot('slot-g', 'metaMaskInjected');
+
+    await expect(
+      signRuntimeSlotActionPayload({
+        slotId: 'slot-g',
+        accountId: '0xabc123',
+        payload: {
+          id: 'uap_hl_typed_6',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            action: {
+              type: 'order',
+            },
+            nonce: 1733000000005,
+          },
+          walletRequest: {
+            method: 'eth_signTypedData_v4',
+            params: ['0xabc123', '{"domain":{"chainId":1337},"types":{}}'],
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Wallet selected account 0xdef456 does not match expected account 0xabc123. Switch wallet account and retry.',
     );
   });
 

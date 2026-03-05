@@ -211,6 +211,7 @@ type submitSignedActionResponse struct {
 	ActionHash   string  `json:"actionHash"`
 	Venue        venueID `json:"venue"`
 	Status       string  `json:"status"`
+	DebugReason  *string `json:"debugReason,omitempty"`
 	VenueOrderID *string `json:"venueOrderId,omitempty"`
 	Source       string  `json:"source"`
 }

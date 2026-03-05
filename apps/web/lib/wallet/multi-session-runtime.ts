@@ -568,6 +568,42 @@ async function requestSignature(
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeComparableAccountId(candidate: string): string {
+  const trimmed = candidate.trim();
+  return trimmed.startsWith('0x') ? trimmed.toLowerCase() : trimmed;
+}
+
+function readRequestedSignerAccount(params: readonly unknown[]): string | null {
+  if (params.length === 0) {
+    return null;
+  }
+  const candidate = params[0];
+  if (typeof candidate !== 'string') {
+    return null;
+  }
+  const trimmed = candidate.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function ensureProviderAccountMatches(
+  provider: BrowserWalletProvider,
+  expectedAccountId: string,
+): Promise<void> {
+  const activeAccountId = await requestAccountId(provider, 'eth_accounts');
+  if (!activeAccountId) {
+    throw new Error('No active account is currently selected in wallet.');
+  }
+
+  if (
+    normalizeComparableAccountId(activeAccountId) !==
+    normalizeComparableAccountId(expectedAccountId)
+  ) {
+    throw new Error(
+      `Wallet selected account ${activeAccountId} does not match expected account ${expectedAccountId}. Switch wallet account and retry.`,
+    );
+  }
+}
+
 function normalizeSignature(signature: string): string {
   const trimmed = signature.trim();
   if (!trimmed) {
@@ -994,8 +1030,18 @@ export async function signRuntimeSlotActionPayload(parameters: {
   }
 
   const walletParams = walletRequest.params ?? [];
+  const signerAccount = readRequestedSignerAccount(walletParams);
+  if (
+    signerAccount &&
+    normalizeComparableAccountId(signerAccount) !==
+      normalizeComparableAccountId(parameters.accountId)
+  ) {
+    throw new Error('Unsigned action payload signer account does not match the selected account.');
+  }
+  await ensureProviderAccountMatches(runtime.provider, parameters.accountId);
   if (parameters.payload.venue === 'hyperliquid') {
     await ensureWalletOnSigningChain(runtime.provider, method, walletParams);
+    await ensureProviderAccountMatches(runtime.provider, parameters.accountId);
   }
   const signature = await requestSignature(runtime.provider, method, walletParams);
 
