@@ -894,6 +894,39 @@ func TestSubmitSignedActionRejectsInvalidSignature(t *testing.T) {
 	}
 }
 
+func TestSubmitSignedActionRejectsFractionalNonce(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/actions/submit",
+		bytes.NewBufferString(`{
+			"orderId":"ord_hl_001",
+			"signature":"0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b",
+			"unsignedActionPayload":{
+				"id":"uap_hl_001",
+				"accountId":"0x0000000000000000000000000000000000000002",
+				"venue":"hyperliquid",
+				"kind":"perp_order_action",
+				"action":{
+					"action":{"type":"order","orders":[{"a":0}]},
+					"nonce":1733000000000.5
+				},
+				"walletRequest":{"method":"eth_signTypedData_v4"}
+			}
+		}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "unsignedActionPayload.action.nonce must be an integer") {
+		t.Fatalf("expected integer nonce validation error, got body=%s", rr.Body.String())
+	}
+}
+
 func TestSubmitSignedActionAsterNotSupported(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,

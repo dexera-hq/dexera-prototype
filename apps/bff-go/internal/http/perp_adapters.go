@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -900,6 +901,13 @@ func isHyperliquidMainnetURL(baseURL string) bool {
 func parseActionNonce(rawNonce any) (int64, error) {
 	switch value := rawNonce.(type) {
 	case float64:
+		if math.IsNaN(value) ||
+			math.IsInf(value, 0) ||
+			math.Trunc(value) != value ||
+			value < float64(-1<<63) ||
+			value > float64(1<<63-1) {
+			return 0, errors.New("unsignedActionPayload.action.nonce must be an integer")
+		}
 		return int64(value), nil
 	case int64:
 		return value, nil
