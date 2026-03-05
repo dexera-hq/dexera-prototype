@@ -44,6 +44,19 @@ Flags in `.env`:
 
 `/api/mock/marks` omits unknown instruments from the response map.
 
+## Hyperliquid Anvil signing
+
+MetaMask enforces typed-data domain chain matching. Hyperliquid L1 order signing uses chain id `1337`, so local development can use Anvil as the RPC endpoint for that chain:
+
+```bash
+anvil --host 0.0.0.0 --port 8545 --chain-id 1337
+```
+
+Set:
+
+- `NEXT_PUBLIC_HYPERLIQUID_SIGNING_CHAIN_RPC_URL=http://127.0.0.1:8545` in `apps/web/.env` (or root `.env`)
+- `ANVIL_RPC_URL=http://127.0.0.1:8545` for Go integration tests
+
 ## Root scripts
 
 - `pnpm dev`: start the Next.js web app only
