@@ -1165,6 +1165,93 @@ body {
   padding: 0.16rem 0.42rem;
 }
 
+.perp-activity {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.perp-activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.perp-activity-title {
+  margin: 0;
+  color: #d8e6fb;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+}
+
+.perp-activity-wallet {
+  margin: 0;
+  color: #9eb4d5;
+  font-size: 0.78rem;
+}
+
+.perp-activity-tabbar {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.perp-activity-tab {
+  border: 1px solid #263449;
+  border-radius: 8px;
+  padding: 0.38rem 0.62rem;
+  background: linear-gradient(180deg, #141d2b, #101722);
+  color: #a5bbdd;
+  font: inherit;
+  font-size: 0.79rem;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.perp-activity-tab.is-active {
+  border-color: #3f89b5;
+  color: #ebf5ff;
+  background: linear-gradient(180deg, #2b4f71, #1f3e5b);
+}
+
+.perp-activity-table-wrap {
+  border: 1px solid #203042;
+  border-radius: 10px;
+  background: rgba(10, 18, 28, 0.82);
+  overflow-x: auto;
+}
+
+.perp-activity-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.perp-activity-table th,
+.perp-activity-table td {
+  border-bottom: 1px solid #1d2a3d;
+  text-align: left;
+  white-space: nowrap;
+  padding: 0.5rem 0.62rem;
+}
+
+.perp-activity-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: #8ea6c8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.72rem;
+  background: #0f1a29;
+}
+
+.perp-activity-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .placeholder-text {
   margin: 0;
   color: #8fa2bf;
@@ -1224,5 +1311,24 @@ body {
   .order-entry-segment-row,
   .order-entry-actions {
     grid-template-columns: 1fr;
+  }
+
+  .perp-activity-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .perp-activity-tabbar {
+    width: 100%;
+  }
+
+  .perp-activity-tab {
+    flex: 1 1 0;
+    text-align: center;
+    padding-inline: 0.4rem;
+  }
+
+  .perp-activity-table {
+    min-width: 680px;
   }
 }

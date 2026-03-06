@@ -1,8 +1,10 @@
 'use client';
 
 import { OrderEntryPanel } from '@/components/workspace/order-entry-panel';
+import { PerpOrdersFillsTable } from '@/components/workspace/perp-orders-fills-table';
 import type { WorkspaceModule } from '@/components/workspace/types';
 import type { WorkspaceMarketDataState } from '@/components/workspace/use-workspace-market-data';
+import { usePerpActivity } from '@/components/workspace/perp-activity-context';
 
 const DEFAULT_INSTRUMENT_ORDER = ['BTC-PERP', 'ETH-PERP', 'SOL-PERP'];
 
@@ -92,6 +94,7 @@ type ModuleContentProps = {
 };
 
 export function ModuleContent({ module, marketData }: ModuleContentProps) {
+  const { recordSubmittedAction } = usePerpActivity();
   const instrumentById = new Map(
     marketData.instruments.map(
       (instrument) => [instrument.instrument.toUpperCase(), instrument] as const,
@@ -163,7 +166,27 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
     return (
       <>
         {renderMarketDataError(marketData.error)}
-        <OrderEntryPanel marketData={marketData} />
+        <OrderEntryPanel
+          marketData={marketData}
+          onActionSubmitted={(receipt) => {
+            recordSubmittedAction({
+              orderId: receipt.orderId,
+              actionHash: receipt.actionHash,
+              unsignedActionPayloadId: receipt.unsignedActionPayloadId,
+              accountId: receipt.accountId,
+              venue: receipt.venue,
+              venueOrderId: receipt.venueOrderId,
+              instrument: receipt.instrument,
+              side: receipt.side,
+              type: receipt.type,
+              size: receipt.size,
+              limitPrice: receipt.limitPrice,
+              markPrice: receipt.markPrice,
+              reduceOnly: receipt.reduceOnly,
+              submittedAt: receipt.submittedAt,
+            });
+          }}
+        />
       </>
     );
   }
@@ -247,6 +270,10 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
         ) : null}
       </div>
     );
+  }
+
+  if (module.kind === 'activity') {
+    return <PerpOrdersFillsTable />;
   }
 
   return <p className="placeholder-text">Drop strategy notes, KPI tiles or custom signals here.</p>;
