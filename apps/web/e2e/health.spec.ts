@@ -7,7 +7,7 @@ test('home page renders draggable trading workspace', async ({ page }) => {
   const moduleCards = page.getByTestId('module-card');
   const moduleTitles = page.getByTestId('module-title');
 
-  await expect(moduleCards).toHaveCount(5);
+  await expect(moduleCards).toHaveCount(6);
   await expect(moduleTitles.nth(0)).toHaveText('Market Overview');
   await expect(moduleTitles.nth(4)).toHaveText('Open Positions');
 
@@ -16,11 +16,11 @@ test('home page renders draggable trading workspace', async ({ page }) => {
   await expect(moduleTitles.nth(1)).toHaveText('Market Overview');
 
   await page.getByRole('button', { name: 'Add Module' }).click();
-  await expect(moduleCards).toHaveCount(6);
+  await expect(moduleCards).toHaveCount(7);
 
   await moduleCards
     .nth(0)
     .getByRole('button', { name: /Remove/i })
     .click();
-  await expect(moduleCards).toHaveCount(5);
+  await expect(moduleCards).toHaveCount(6);
 });
