@@ -27,6 +27,7 @@ import {
 } from '@/lib/wallet/order-entry-panel-state';
 import { submitUnsignedAction } from '@/lib/wallet/sign-unsigned-transaction';
 import { submitSignedAction } from '@/lib/wallet/submit-signed-action';
+import type { RecordSubmittedPerpActionInput } from '@/lib/wallet/perp-activity';
 import {
   SIGNING_ONLY_DISCLAIMER_LINES,
   TransactionGuardrailError,
@@ -41,9 +42,7 @@ type OrderEntryExecutionState =
   | { status: 'success'; message: string }
   | { status: 'error'; message: string };
 
-type OrderEntrySubmissionReceipt = ActionSubmissionResult & {
-  submittedAt: string;
-};
+type OrderEntrySubmissionReceipt = RecordSubmittedPerpActionInput;
 
 function truncateAccountId(accountId: string): string {
   if (accountId.length <= 14) {
@@ -257,7 +256,7 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
   }
 
   async function handleSubmitInWallet() {
-    if (!activeSlot || !previewResponse) {
+    if (!activeSlot || !previewResponse || !orderRequest) {
       setExecutionState({
         status: 'error',
         message: 'Preview a current unsigned payload before submitting in wallet.',
@@ -336,7 +335,19 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
               },
             });
       const receipt: OrderEntrySubmissionReceipt = {
-        ...submission,
+        orderId: submission.orderId,
+        actionHash: submission.actionHash,
+        unsignedActionPayloadId: submission.unsignedActionPayloadId,
+        accountId: submission.accountId,
+        venue: submission.venue,
+        venueOrderId: submission.venueOrderId,
+        instrument: orderRequest.instrument,
+        side: orderRequest.side,
+        type: orderRequest.type,
+        size: orderRequest.size,
+        limitPrice: orderRequest.limitPrice,
+        markPrice: markPrice?.toString(),
+        reduceOnly: orderRequest.reduceOnly === true,
         submittedAt: new Date().toISOString(),
       };
       setLatestSubmission(receipt);

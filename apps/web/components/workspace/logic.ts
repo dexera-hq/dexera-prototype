@@ -6,6 +6,7 @@ export const initialModules: WorkspaceModule[] = [
   { id: 3, kind: 'trade', label: 'Order Entry', size: 'normal', config: {} },
   { id: 4, kind: 'orderbook', label: 'Order Book', size: 'normal', config: {} },
   { id: 5, kind: 'positions', label: 'Open Positions', size: 'wide', config: {} },
+  { id: 6, kind: 'activity', label: 'Perp Orders & Fills', size: 'wide', config: {} },
 ];
 
 export function moveModule(

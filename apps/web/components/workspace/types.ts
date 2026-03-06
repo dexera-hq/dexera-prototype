@@ -4,6 +4,7 @@ export const MODULE_KINDS = [
   'trade',
   'orderbook',
   'positions',
+  'activity',
   'custom',
 ] as const;
 export const MODULE_SIZES = ['full', 'wide', 'normal'] as const;

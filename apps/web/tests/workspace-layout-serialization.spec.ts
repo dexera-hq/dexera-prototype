@@ -65,6 +65,35 @@ describe('workspace layout serialization', () => {
     expect(serializeWorkspaceLayout(deserialized as WorkspaceLayoutState)).toBe(serialized);
   });
 
+  it('supports activity module kind in deterministic serialization', () => {
+    const serialized = serializeWorkspaceLayout({
+      nextModuleId: 9,
+      modules: [
+        {
+          id: 8,
+          kind: 'activity',
+          label: 'Perp Orders & Fills',
+          size: 'wide',
+          config: {},
+        },
+      ],
+    });
+
+    const deserialized = deserializeWorkspaceLayout(serialized);
+    expect(deserialized).toEqual({
+      nextModuleId: 9,
+      modules: [
+        {
+          id: 8,
+          kind: 'activity',
+          label: 'Perp Orders & Fills',
+          size: 'wide',
+          config: {},
+        },
+      ],
+    });
+  });
+
   it('deserializes layout ids and appends blocks missing from layout', () => {
     const deserialized = deserializeWorkspaceLayout(
       JSON.stringify({
