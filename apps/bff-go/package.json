@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "GOCACHE=$PWD/.cache/go-build go run ./cmd/bff",
-    "build": "GOCACHE=$PWD/.cache/go-build go build ./cmd/bff",
-    "lint": "test -z \"$(gofmt -l .)\" && GOCACHE=$PWD/.cache/go-build go vet ./...",
+    "dev": "GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod GOPATH=$PWD/.cache/go go run ./cmd/bff",
+    "build": "GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod GOPATH=$PWD/.cache/go go build ./cmd/bff",
+    "lint": "test -z \"$(gofmt -l .)\" && GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod GOPATH=$PWD/.cache/go go vet ./...",
     "format": "gofmt -w .",
-    "typecheck": "GOCACHE=$PWD/.cache/go-build go test ./...",
-    "test": "GOCACHE=$PWD/.cache/go-build go test ./..."
+    "typecheck": "GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod GOPATH=$PWD/.cache/go go test ./...",
+    "test": "GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod GOPATH=$PWD/.cache/go go test ./..."
   }
 }
