@@ -17,6 +17,7 @@ import { getPerpOrderStatus } from './get-perp-order-status';
 
 const RECONCILIATION_POLL_INTERVAL_MS = 4_000;
 const MAX_RECONCILIATION_ATTEMPTS = 90;
+const TRACKED_PERP_ACTIONS_STORAGE_KEY = 'dexera.perp-actions.v1';
 
 export type TrackedPerpActionStatus =
   | 'optimistic_submitting'
@@ -51,6 +52,20 @@ export type TrackedPerpAction = {
 
 type TrackedActionByWallet = Record<string, TrackedPerpAction[]>;
 
+type StorageReader = Pick<Storage, 'getItem'>;
+type StorageWriter = Pick<Storage, 'setItem' | 'removeItem'>;
+
+const VALID_TRACKED_ACTION_STATUSES: readonly TrackedPerpActionStatus[] = [
+  'optimistic_submitting',
+  'submitted',
+  'reconciling',
+  'open',
+  'filled',
+  'cancelled',
+  'rejected',
+  'failed',
+];
+
 function createTrackedActionId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -61,6 +76,119 @@ function createTrackedActionId(): string {
 
 function toWalletKey(accountId: string, venue: BffVenueId): string {
   return `${venue}:${accountId.trim().toLowerCase()}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function coerceTrackedPerpAction(candidate: unknown): TrackedPerpAction | null {
+  if (!isRecord(candidate)) {
+    return null;
+  }
+
+  if (
+    typeof candidate.id !== 'string' ||
+    typeof candidate.accountId !== 'string' ||
+    candidate.venue !== 'hyperliquid' ||
+    typeof candidate.instrument !== 'string' ||
+    (candidate.side !== 'buy' && candidate.side !== 'sell') ||
+    (candidate.type !== 'market' && candidate.type !== 'limit') ||
+    typeof candidate.size !== 'string' ||
+    typeof candidate.submittedAt !== 'string' ||
+    typeof candidate.updatedAt !== 'string' ||
+    typeof candidate.isTerminal !== 'boolean' ||
+    !Number.isInteger(candidate.reconciliationAttempts)
+  ) {
+    return null;
+  }
+
+  if (
+    typeof candidate.status !== 'string' ||
+    !VALID_TRACKED_ACTION_STATUSES.includes(candidate.status as TrackedPerpActionStatus)
+  ) {
+    return null;
+  }
+
+  return {
+    id: candidate.id,
+    accountId: candidate.accountId.trim().toLowerCase(),
+    venue: 'hyperliquid',
+    instrument: candidate.instrument.trim().toUpperCase(),
+    side: candidate.side,
+    type: candidate.type,
+    size: candidate.size,
+    limitPrice: normalizeOptionalString(candidate.limitPrice),
+    orderId: normalizeOptionalString(candidate.orderId),
+    actionHash: normalizeOptionalString(candidate.actionHash),
+    venueOrderId: normalizeOptionalString(candidate.venueOrderId),
+    status: candidate.status as TrackedPerpActionStatus,
+    venueStatus: normalizeOptionalString(candidate.venueStatus),
+    submittedAt: candidate.submittedAt,
+    updatedAt: candidate.updatedAt,
+    isTerminal: candidate.isTerminal,
+    reconciliationAttempts: candidate.reconciliationAttempts as number,
+    lastError: normalizeOptionalString(candidate.lastError),
+  };
+}
+
+export function serializeTrackedPerpActions(state: TrackedActionByWallet): string {
+  return JSON.stringify(state);
+}
+
+export function deserializeTrackedPerpActions(serializedState: string | null): TrackedActionByWallet {
+  if (!serializedState) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(serializedState) as unknown;
+    if (!isRecord(parsed)) {
+      return {};
+    }
+
+    const nextState: TrackedActionByWallet = {};
+    for (const [walletKey, actions] of Object.entries(parsed)) {
+      if (typeof walletKey !== 'string' || !Array.isArray(actions)) {
+        continue;
+      }
+
+      const normalizedActions = actions
+        .map((action) => coerceTrackedPerpAction(action))
+        .filter((action): action is TrackedPerpAction => action !== null)
+        .slice(0, 24);
+
+      if (normalizedActions.length > 0) {
+        nextState[walletKey] = normalizedActions;
+      }
+    }
+
+    return nextState;
+  } catch {
+    return {};
+  }
+}
+
+function readTrackedPerpActions(storage: StorageReader): TrackedActionByWallet {
+  return deserializeTrackedPerpActions(storage.getItem(TRACKED_PERP_ACTIONS_STORAGE_KEY));
+}
+
+function writeTrackedPerpActions(storage: StorageWriter, state: TrackedActionByWallet): void {
+  if (Object.keys(state).length === 0) {
+    storage.removeItem(TRACKED_PERP_ACTIONS_STORAGE_KEY);
+    return;
+  }
+
+  storage.setItem(TRACKED_PERP_ACTIONS_STORAGE_KEY, serializeTrackedPerpActions(state));
 }
 
 export function resolveTrackedPerpActionStatus(parameters: {
@@ -156,12 +284,26 @@ const SubmittedPerpActionsTrackerContext = createContext<SubmittedPerpActionsTra
 function useSubmittedPerpActionsTrackerState(
   parameters: UseSubmittedPerpActionsTrackerParameters,
 ): SubmittedPerpActionsTrackerApi {
-  const [actionsByWallet, setActionsByWallet] = useState<TrackedActionByWallet>({});
+  const [actionsByWallet, setActionsByWallet] = useState<TrackedActionByWallet>(() => {
+    if (typeof window === 'undefined') {
+      return {};
+    }
+
+    return readTrackedPerpActions(window.localStorage);
+  });
   const actionsByWalletRef = useRef(actionsByWallet);
   const inFlightActionIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
     actionsByWalletRef.current = actionsByWallet;
+  }, [actionsByWallet]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    writeTrackedPerpActions(window.localStorage, actionsByWallet);
   }, [actionsByWallet]);
 
   const addOptimisticAction = useCallback(
