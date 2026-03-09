@@ -112,19 +112,8 @@ type OrderEntryPanelProps = {
 export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPanelProps) {
   const { activeSlot } = useWalletManager();
   const canTradeWithActiveWallet = isWalletSlotTradable(activeSlot);
-  const {
-    actions: trackedActions,
-    addOptimisticAction,
-    markActionSubmitted,
-    markActionFailed,
-  } = useSubmittedPerpActionsTracker({
-    activeWallet: activeSlot
-      ? {
-          accountId: activeSlot.accountId,
-          venue: activeSlot.venue,
-        }
-      : null,
-  });
+  const { actions: trackedActions, addOptimisticAction, markActionSubmitted, markActionFailed } =
+    useSubmittedPerpActionsTracker();
   const [draft, setDraft] = useState<OrderEntryDraft>(() =>
     createOrderEntryDraft({ venue: activeSlot?.venue ?? 'hyperliquid' }),
   );

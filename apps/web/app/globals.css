@@ -1269,6 +1269,50 @@ body {
   padding: 1rem 0.9rem;
 }
 
+.perp-activity-table-body {
+  display: grid;
+}
+
+.perp-activity-table-row {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 0.9fr 0.8fr 1.1fr 0.7fr 0.8fr 0.9fr 0.8fr;
+  align-items: center;
+  padding: 0.78rem 0.9rem;
+  border-top: 1px solid #141b24;
+  color: #d9e6fb;
+  font-size: 0.82rem;
+}
+
+.perp-activity-status {
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid #294861;
+  padding: 0.14rem 0.45rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.perp-activity-status.status-optimistic_submitting,
+.perp-activity-status.status-submitted,
+.perp-activity-status.status-reconciling,
+.perp-activity-status.status-open {
+  border-color: #245784;
+  color: #8fc7ff;
+}
+
+.perp-activity-status.status-filled {
+  border-color: #268f73;
+  color: #85e4bf;
+}
+
+.perp-activity-status.status-cancelled,
+.perp-activity-status.status-rejected,
+.perp-activity-status.status-failed {
+  border-color: #874b5c;
+  color: #ff9bb4;
+}
+
 .perp-activity-empty p {
   margin: 0;
   color: #b0c1dc;
@@ -1322,6 +1366,10 @@ body {
   }
 
   .perp-activity-table-head {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .perp-activity-table-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

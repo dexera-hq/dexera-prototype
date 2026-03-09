@@ -1,7 +1,17 @@
 'use client';
 
 import type { BffPerpOrderSide, BffPerpOrderType, BffVenueId } from '@dexera/api-types/openapi';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import { getPerpOrderStatus } from './get-perp-order-status';
 
@@ -104,9 +114,7 @@ type UseSubmittedPerpActionsTrackerParameters = {
   } | null;
 };
 
-export function useSubmittedPerpActionsTracker(
-  parameters: UseSubmittedPerpActionsTrackerParameters,
-): {
+type SubmittedPerpActionsTrackerApi = {
   actions: TrackedPerpAction[];
   addOptimisticAction: (input: {
     accountId: string;
@@ -132,7 +140,22 @@ export function useSubmittedPerpActionsTracker(
     venue: BffVenueId;
     error: string;
   }) => void;
-} {
+};
+
+const submittedPerpActionsTrackerFallback: SubmittedPerpActionsTrackerApi = {
+  actions: [],
+  addOptimisticAction: () => null,
+  markActionSubmitted: () => undefined,
+  markActionFailed: () => undefined,
+};
+
+const SubmittedPerpActionsTrackerContext = createContext<SubmittedPerpActionsTrackerApi>(
+  submittedPerpActionsTrackerFallback,
+);
+
+function useSubmittedPerpActionsTrackerState(
+  parameters: UseSubmittedPerpActionsTrackerParameters,
+): SubmittedPerpActionsTrackerApi {
   const [actionsByWallet, setActionsByWallet] = useState<TrackedActionByWallet>({});
   const actionsByWalletRef = useRef(actionsByWallet);
   const inFlightActionIdsRef = useRef(new Set<string>());
@@ -395,4 +418,23 @@ export function useSubmittedPerpActionsTracker(
     markActionSubmitted,
     markActionFailed,
   };
+}
+
+export function SubmittedPerpActionsTrackerProvider({
+  activeWallet,
+  children,
+}: {
+  activeWallet: {
+    accountId: string;
+    venue: BffVenueId;
+  } | null;
+  children: ReactNode;
+}) {
+  const tracker = useSubmittedPerpActionsTrackerState({ activeWallet });
+
+  return createElement(SubmittedPerpActionsTrackerContext.Provider, { value: tracker }, children);
+}
+
+export function useSubmittedPerpActionsTracker(): SubmittedPerpActionsTrackerApi {
+  return useContext(SubmittedPerpActionsTrackerContext);
 }
