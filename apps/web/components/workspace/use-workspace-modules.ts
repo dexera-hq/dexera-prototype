@@ -390,7 +390,7 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
     event.preventDefault();
     event.stopPropagation();
     const sourceId = dragSourceIdRef.current ?? Number(event.dataTransfer.getData('text/plain'));
-    if (!Number.isFinite(sourceId)) {
+    if (!Number.isFinite(sourceId) || sourceId === targetId) {
       dragSourceIdRef.current = null;
       dropTargetRef.current = null;
       setDraggingId(null);
