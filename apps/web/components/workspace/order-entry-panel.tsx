@@ -1,14 +1,13 @@
 'use client';
 
 import type { BffBuildUnsignedActionResponse, BffVenueId } from '@dexera/api-types/openapi';
-import { ArrowRight, ShieldCheck } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -16,7 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { WorkspaceMarketDataState } from '@/components/workspace/use-workspace-market-data';
 import { buildUnsignedAction } from '@/lib/wallet/build-unsigned-transaction';
@@ -40,10 +38,7 @@ import {
 } from '@/lib/wallet/order-entry-panel-state';
 import { submitUnsignedAction } from '@/lib/wallet/sign-unsigned-transaction';
 import { submitSignedAction } from '@/lib/wallet/submit-signed-action';
-import {
-  SIGNING_ONLY_DISCLAIMER_LINES,
-  TransactionGuardrailError,
-} from '@/lib/wallet/transaction-guardrails';
+import { TransactionGuardrailError } from '@/lib/wallet/transaction-guardrails';
 import type { ActionSubmissionResult } from '@/lib/wallet/types';
 import { isWalletSlotTradable } from '@/lib/wallet/types';
 import { useSubmittedPerpActionsTracker } from '@/lib/wallet/use-submitted-perp-actions';
@@ -66,10 +61,6 @@ function truncateAccountId(accountId: string): string {
   }
 
   return `${accountId.slice(0, 8)}...${accountId.slice(-4)}`;
-}
-
-function toJsonPreview(value: unknown): string {
-  return JSON.stringify(value, null, 2);
 }
 
 function getWalletBlockingMessage(parameters: {
@@ -656,54 +647,6 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
         ) : null}
       </div>
 
-      <div className="rounded-xl border border-border/70 bg-background/40 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-foreground">Unsigned action payload</p>
-            <p className="text-sm text-muted-foreground">
-              Inspect the venue-ready payload before handing it to the wallet runtime.
-            </p>
-          </div>
-          <Badge
-            variant={previewResponse === null ? 'outline' : isPreviewDirty ? 'warning' : 'success'}
-          >
-            {previewResponse === null ? 'Missing' : isPreviewDirty ? 'Stale' : 'Current'}
-          </Badge>
-        </div>
-
-        {previewResponse ? (
-          <>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Badge variant="outline">Order ID: {previewResponse.orderId}</Badge>
-              <Badge variant="outline">Policy: {previewResponse.signingPolicy}</Badge>
-            </div>
-            <p className="mt-3 text-sm text-muted-foreground">{previewResponse.disclaimer}</p>
-            <ScrollArea className="mt-4 h-[240px] rounded-lg border border-border/70 bg-card/90">
-              <pre className="p-4 text-xs leading-6 text-muted-foreground">
-                {toJsonPreview(previewResponse.unsignedActionPayload)}
-              </pre>
-            </ScrollArea>
-          </>
-        ) : (
-          <p className="mt-4 text-sm text-muted-foreground">
-            Build a preview to inspect the unsigned action payload before signing.
-          </p>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-border/70 bg-background/40 p-4">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="size-4 text-muted-foreground" />
-          <p className="text-sm font-medium text-foreground">Signing guardrails</p>
-        </div>
-        <Separator className="my-4" />
-        <ul className="space-y-2 text-sm text-muted-foreground">
-          {SIGNING_ONLY_DISCLAIMER_LINES.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-          <li>No API key or server-side signing path is used in this order entry flow.</li>
-        </ul>
-      </div>
     </div>
   );
 }

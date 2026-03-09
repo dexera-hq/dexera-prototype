@@ -1,7 +1,6 @@
 import type { DragEvent, PointerEvent } from 'react';
 import { GripVertical, X } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ModuleContent } from '@/components/workspace/module-content';
@@ -44,13 +43,15 @@ export function WorkspaceModuleCard({
       : module.size === 'wide'
         ? 'xl:col-span-8'
         : 'xl:col-span-4';
+  const minHeightClassName = module.kind === 'overview' ? 'min-h-[190px]' : 'min-h-[280px]';
 
   return (
     <Card
       data-testid="module-card"
       className={cn(
-        'col-span-1 flex min-h-[280px] flex-col overflow-hidden border-border/80 bg-card/90 transition-all duration-150 xl:col-span-12',
+        'col-span-1 flex flex-col overflow-hidden border-border/80 bg-card/90 transition-all duration-150 xl:col-span-12',
         sizeClassName,
+        minHeightClassName,
         draggingId === module.id && 'scale-[0.99] opacity-55',
         dropTargetId === module.id && 'border-primary/60 ring-1 ring-primary/40',
       )}
@@ -75,27 +76,18 @@ export function WorkspaceModuleCard({
             <p className="truncate text-sm font-medium text-foreground" data-testid="module-title">
               {module.label}
             </p>
-            <p className="text-xs text-muted-foreground">Draggable workspace block</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge
-            variant="outline"
-            className="hidden border-border/70 bg-background/50 uppercase sm:inline-flex"
-          >
-            {module.size}
-          </Badge>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={() => onRemove(module.id)}
-            aria-label={`Remove ${module.label}`}
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground hover:text-foreground"
+          onClick={() => onRemove(module.id)}
+          aria-label={`Remove ${module.label}`}
+        >
+          <X className="size-4" />
+        </Button>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col p-4">
         <ModuleContent module={module} marketData={marketData} />

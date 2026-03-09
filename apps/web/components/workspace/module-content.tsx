@@ -1,9 +1,9 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, Activity, Layers3 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Table,
@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { OrderBookPanel } from '@/components/workspace/order-book-panel';
 import { OrderEntryPanel } from '@/components/workspace/order-entry-panel';
 import { PerpOrdersFillsPanel } from '@/components/workspace/perp-orders-fills-panel';
 import type { WorkspaceModule } from '@/components/workspace/types';
@@ -20,6 +21,7 @@ import type { WorkspaceMarketDataState } from '@/components/workspace/use-worksp
 import { cn } from '@/lib/utils';
 
 const DEFAULT_INSTRUMENT_ORDER = ['BTC-PERP', 'ETH-PERP', 'SOL-PERP'];
+const OVERVIEW_TICKER_COPIES = [0, 1] as const;
 
 const USD_FORMATTER = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -78,6 +80,19 @@ function parseNumeric(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function formatClock(timestampMs?: number): string {
+  if (!timestampMs) {
+    return 'Awaiting feed';
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(timestampMs);
+}
+
 function ErrorBanner({ error }: { error: string | null }) {
   if (!error) {
     return null;
@@ -105,45 +120,154 @@ type ModuleContentProps = {
 };
 
 export function ModuleContent({ module, marketData }: ModuleContentProps) {
+  const overviewMarqueeRef = useRef<HTMLDivElement | null>(null);
+  const overviewMeasureRef = useRef<HTMLDivElement | null>(null);
+  const [overviewRepeatCount, setOverviewRepeatCount] = useState(1);
   const instrumentById = new Map(
     marketData.instruments.map(
       (instrument) => [instrument.instrument.toUpperCase(), instrument] as const,
     ),
   );
+  const overviewInstruments = resolveOverviewInstruments(marketData);
+  const overviewCards = overviewInstruments.map((instrument) => {
+    const mark = marketData.marks[instrument];
+    const delta = deterministicDelta(instrument);
+    const metadata = instrumentById.get(instrument);
+
+    return {
+      instrument,
+      delta,
+      mark,
+      venue: metadata?.venue ?? 'Composite venue',
+      pair:
+        metadata?.baseAsset && metadata?.quoteAsset
+          ? `${metadata.baseAsset}/${metadata.quoteAsset}`
+          : 'PERP / USD',
+    };
+  });
+  const repeatedOverviewCards = Array.from({ length: overviewRepeatCount }, () => overviewCards).flat();
+
+  useEffect(() => {
+    const marquee = overviewMarqueeRef.current;
+    const measure = overviewMeasureRef.current;
+
+    if (module.kind !== 'overview' || !marquee || !measure || overviewCards.length === 0) {
+      return;
+    }
+
+    const updateRepeatCount = () => {
+      const containerWidth = marquee.clientWidth;
+      const singleSequenceWidth = measure.scrollWidth;
+
+      if (singleSequenceWidth === 0) {
+        return;
+      }
+
+      const nextRepeatCount = Math.max(
+        1,
+        Math.ceil(containerWidth / singleSequenceWidth),
+      );
+
+      setOverviewRepeatCount((current) => (current === nextRepeatCount ? current : nextRepeatCount));
+    };
+
+    updateRepeatCount();
+
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateRepeatCount();
+    });
+
+    resizeObserver.observe(marquee);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [module.kind, overviewCards.length]);
 
   if (module.kind === 'overview') {
-    const overviewInstruments = resolveOverviewInstruments(marketData);
-
     return (
-      <div className="flex h-full flex-col gap-4">
+      <div className="relative flex h-full flex-col gap-4">
         <ErrorBanner error={marketData.error} />
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {overviewInstruments.map((instrument) => {
-            const mark = marketData.marks[instrument];
-            const delta = deterministicDelta(instrument);
-
-            return (
-              <Card key={instrument} className="border-border/70 bg-background/40 shadow-none">
-                <CardContent className="flex h-full flex-col justify-between gap-4 p-4">
-                  <div className="flex items-start justify-between gap-3">
+        <div className="pointer-events-none absolute h-0 overflow-hidden opacity-0" aria-hidden="true">
+          <div ref={overviewMeasureRef} className="market-ticker-group">
+            {overviewCards.map((card) => (
+              <article
+                key={`measure-${card.instrument}`}
+                className="flex h-[78px] w-max min-w-[16rem] shrink-0 items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/40 px-3 py-2"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="whitespace-nowrap text-sm font-semibold text-foreground">
+                      {card.instrument}
+                    </p>
+                    <DeltaBadge delta={card.delta} />
+                  </div>
+                  <p className="mt-0.5 whitespace-nowrap text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    {card.venue}
+                  </p>
+                  <p className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
+                    {card.pair}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="whitespace-nowrap text-xl font-semibold tracking-tight text-foreground">
+                    {card.mark ? formatUSD(card.mark.price) : '--'}
+                  </p>
+                  <p className="mt-0.5 whitespace-nowrap text-xs text-muted-foreground">
+                    {formatClock(card.mark?.timestampMs)}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+        <div ref={overviewMarqueeRef} className="market-ticker-marquee">
+          <div className="market-ticker-track">
+            {OVERVIEW_TICKER_COPIES.map((copyIndex) => (
+              <div
+                key={copyIndex}
+                className={cn(
+                  'market-ticker-group',
+                  copyIndex === 1 && 'market-ticker-group-duplicate',
+                )}
+                aria-hidden={copyIndex === 1}
+              >
+                {repeatedOverviewCards.map((card, index) => (
+                  <article
+                    key={`${copyIndex}-${card.instrument}-${index}`}
+                    className="flex h-[78px] w-max min-w-[16rem] shrink-0 items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/40 px-3 py-2"
+                  >
                     <div>
-                      <p className="text-sm font-medium text-foreground">{instrument}</p>
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                        Market summary
+                      <div className="flex items-center gap-2">
+                        <p className="whitespace-nowrap text-sm font-semibold text-foreground">
+                          {card.instrument}
+                        </p>
+                        <DeltaBadge delta={card.delta} />
+                      </div>
+                      <p className="mt-0.5 whitespace-nowrap text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                        {card.venue}
+                      </p>
+                      <p className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
+                        {card.pair}
                       </p>
                     </div>
-                    <DeltaBadge delta={delta} />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-semibold tracking-tight text-foreground">
-                      {mark ? formatUSD(mark.price) : '--'}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">Venue reference price</p>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                    <div className="shrink-0 text-right">
+                      <p className="whitespace-nowrap text-xl font-semibold tracking-tight text-foreground">
+                        {card.mark ? formatUSD(card.mark.price) : '--'}
+                      </p>
+                      <p className="mt-0.5 whitespace-nowrap text-xs text-muted-foreground">
+                        {formatClock(card.mark?.timestampMs)}
+                      </p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -157,55 +281,63 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
     return (
       <div className="flex h-full flex-col gap-4">
         <ErrorBanner error={marketData.error} />
-        <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="rounded-xl border border-border/70 bg-background/40 p-4">
+        <div className="relative flex min-h-[320px] flex-1 overflow-hidden rounded-xl bg-[radial-gradient(circle_at_top_left,rgba(110,231,183,0.16),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0))]">
+          <div
+            className="absolute inset-0 opacity-60"
+            aria-hidden="true"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, rgba(148, 163, 184, 0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(148, 163, 184, 0.12) 1px, transparent 1px)',
+              backgroundSize: 'calc(100% / 8) 100%, 100% calc(100% / 5)',
+            }}
+          />
+
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-3 p-1">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="border-border/70 bg-background/60">
-                Primary instrument
+              <Badge variant="outline" className="border-border/70 bg-background/70">
+                {instrument}
               </Badge>
               <DeltaBadge delta={delta} />
             </div>
-            <p className="mt-4 text-3xl font-semibold tracking-tight text-foreground">
-              {mark ? formatUSD(mark.price) : '--'}
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">{instrument}</p>
-            <p className="mt-6 text-sm leading-6 text-muted-foreground">
-              Lightweight prototype visualization for the selected venue mark. Replace with the
-              production charting surface when data density increases.
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-border/70 bg-background/40 p-4">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">Intraday trend</p>
-                <p className="text-sm text-muted-foreground">
-                  Illustrative curve based on current mark
+            <div className="flex items-center gap-2 rounded-full bg-background/65 px-3 py-1.5 backdrop-blur-sm">
+              <Activity className="size-4 text-muted-foreground" />
+              <div className="text-right">
+                <p className="text-sm font-semibold tracking-tight text-foreground">
+                  {mark ? formatUSD(mark.price) : '--'}
+                </p>
+                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  Placeholder
                 </p>
               </div>
-              <Activity className="size-4 text-muted-foreground" />
-            </div>
-            <div className="rounded-xl border border-border/70 bg-card/70 p-2">
-              <svg className="h-[240px] w-full" viewBox="0 0 800 280" aria-hidden="true">
-                <defs>
-                  <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="rgba(110, 231, 183, 0.35)" />
-                    <stop offset="100%" stopColor="rgba(110, 231, 183, 0)" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M0 250 C80 225, 130 210, 190 205 C260 200, 315 215, 370 190 C430 160, 500 120, 570 125 C640 130, 700 150, 800 70"
-                  fill="none"
-                  stroke="rgb(110 231 183)"
-                  strokeWidth="3"
-                />
-                <path
-                  d="M0 250 C80 225, 130 210, 190 205 C260 200, 315 215, 370 190 C430 160, 500 120, 570 125 C640 130, 700 150, 800 70 L800 280 L0 280 Z"
-                  fill="url(#chartFill)"
-                />
-              </svg>
             </div>
           </div>
+
+          <div className="relative flex flex-1 items-end pt-16">
+            <svg className="h-full w-full" viewBox="0 0 800 320" aria-hidden="true">
+              <defs>
+                <linearGradient id="chartStroke" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="rgba(134, 239, 172, 0.7)" />
+                  <stop offset="100%" stopColor="rgba(110, 231, 183, 1)" />
+                </linearGradient>
+                <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="rgba(110, 231, 183, 0.28)" />
+                  <stop offset="100%" stopColor="rgba(110, 231, 183, 0)" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M0 268 C65 260, 120 238, 175 222 C232 205, 286 214, 345 184 C398 157, 446 109, 512 118 C585 128, 636 164, 706 136 C748 118, 774 96, 800 72"
+                fill="none"
+                stroke="url(#chartStroke)"
+                strokeWidth="4"
+                strokeLinecap="round"
+              />
+              <path
+                d="M0 268 C65 260, 120 238, 175 222 C232 205, 286 214, 345 184 C398 157, 446 109, 512 118 C585 128, 636 164, 706 136 C748 118, 774 96, 800 72 L800 320 L0 320 Z"
+                fill="url(#chartFill)"
+              />
+            </svg>
+          </div>
+
         </div>
       </div>
     );
@@ -232,59 +364,11 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
   if (module.kind === 'orderbook') {
     const instrument = resolveTradeInstrument(marketData);
     const mid = marketData.marks[instrument]?.price ?? 3200;
-    const bid = mid - 0.7;
-    const ask = mid + 0.7;
-    const rows = [
-      { side: 'Ask', price: ask.toFixed(2), size: '2.458', total: (ask * 2.458).toFixed(2) },
-      {
-        side: 'Ask',
-        price: (ask + 0.4).toFixed(2),
-        size: '1.192',
-        total: ((ask + 0.4) * 1.192).toFixed(2),
-      },
-      { side: 'Bid', price: bid.toFixed(2), size: '1.567', total: (bid * 1.567).toFixed(2) },
-      {
-        side: 'Bid',
-        price: (bid - 0.4).toFixed(2),
-        size: '2.204',
-        total: ((bid - 0.4) * 2.204).toFixed(2),
-      },
-    ];
 
     return (
       <div className="flex h-full flex-col gap-4">
         <ErrorBanner error={marketData.error} />
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/40 px-4 py-3">
-          <div>
-            <p className="text-sm font-medium text-foreground">{instrument}</p>
-            <p className="text-sm text-muted-foreground">
-              Spread {formatUSD(ask - bid)} around current midpoint
-            </p>
-          </div>
-          <Badge variant="outline">Order book</Badge>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>Side</TableHead>
-              <TableHead>Price</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead>Total</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={`${row.side}-${row.price}`}>
-                <TableCell>
-                  <Badge variant={row.side === 'Bid' ? 'success' : 'destructive'}>{row.side}</Badge>
-                </TableCell>
-                <TableCell className="font-medium text-foreground">{row.price}</TableCell>
-                <TableCell>{row.size}</TableCell>
-                <TableCell>{row.total}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <OrderBookPanel instrument={instrument} midPrice={mid} />
       </div>
     );
   }

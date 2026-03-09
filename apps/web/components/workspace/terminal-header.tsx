@@ -1,11 +1,15 @@
-import { LayoutTemplate, PanelsTopLeft } from 'lucide-react';
+import { PanelsTopLeft, RotateCcw } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { WalletConnectButton } from '@/components/workspace/wallet-connect-button';
 
-export function TerminalHeader() {
+type TerminalHeaderProps = {
+  onResetLayout: () => void;
+};
+
+export function TerminalHeader({ onResetLayout }: TerminalHeaderProps) {
   return (
     <Card className="overflow-hidden border-border/80 bg-background/75 backdrop-blur">
       <CardContent className="flex flex-col gap-4 p-4 sm:p-5">
@@ -20,20 +24,16 @@ export function TerminalHeader() {
                   Dexera
                 </h1>
                 <Badge variant="outline" className="border-border/70 bg-background/50">
-                  Beta
+                  Prototype
                 </Badge>
               </div>
-              <p className="max-w-2xl text-sm text-muted-foreground">
-                Neutral-dark execution workspace for venue-connected trading, modular signal blocks,
-                and wallet-controlled order flows.
-              </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline">
-              <LayoutTemplate className="size-4" />
-              Customize
+            <Button type="button" variant="secondary" onClick={onResetLayout}>
+              <RotateCcw className="size-4" />
+              Reset Layout
             </Button>
             <WalletConnectButton />
           </div>

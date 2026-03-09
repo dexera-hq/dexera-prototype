@@ -4,7 +4,6 @@ import { WorkspaceModuleCard } from '@/components/workspace/module-card';
 import { TerminalHeader } from '@/components/workspace/terminal-header';
 import { useWorkspaceMarketData } from '@/components/workspace/use-workspace-market-data';
 import { useWorkspaceModules } from '@/components/workspace/use-workspace-modules';
-import { WorkspaceToolbar } from '@/components/workspace/workspace-toolbar';
 import { SubmittedPerpActionsTrackerProvider } from '@/lib/wallet/use-submitted-perp-actions';
 import { useWalletManager } from '@/lib/wallet/wallet-manager-context';
 
@@ -15,7 +14,6 @@ export function TradingWorkspace() {
     modules,
     draggingId,
     dropTargetId,
-    addModule,
     removeModule,
     resetLayout,
     handleDragStart,
@@ -31,12 +29,7 @@ export function TradingWorkspace() {
   return (
     <main className="min-h-screen px-4 py-4 sm:px-6 sm:py-6">
       <section className="mx-auto flex w-full max-w-[1680px] flex-col gap-4">
-        <TerminalHeader />
-        <WorkspaceToolbar
-          moduleCount={modules.length}
-          onAddModule={addModule}
-          onResetLayout={resetLayout}
-        />
+        <TerminalHeader onResetLayout={resetLayout} />
 
         <SubmittedPerpActionsTrackerProvider
           activeWallet={

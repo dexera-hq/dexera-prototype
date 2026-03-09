@@ -295,18 +295,6 @@ export function PerpOrdersFillsPanel() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border/70 bg-background/40 px-4 py-4">
-        <div>
-          <p className="text-sm font-medium text-foreground">Recent perp orders and fills</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Workspace activity feed for Hyperliquid and Aster order flow.
-          </p>
-        </div>
-        <Badge variant="outline" className="border-border/70 bg-background/60">
-          Prototype
-        </Badge>
-      </div>
-
       {cancelError ? (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
           {cancelError}
@@ -377,7 +365,7 @@ export function PerpOrdersFillsPanel() {
             })}
           </div>
 
-          <ScrollArea className="hidden max-h-[420px] rounded-xl border border-border/70 bg-background/20 md:block">
+          <ScrollArea className="hidden min-h-0 flex-1 rounded-xl border border-border/70 bg-background/20 md:block">
             <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
