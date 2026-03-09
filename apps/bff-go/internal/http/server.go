@@ -246,17 +246,17 @@ type perpPositionsQuery struct {
 }
 
 type perpFill struct {
-	ID        string  `json:"id"`
-	AccountID string  `json:"accountId"`
-	Venue     venueID `json:"venue"`
-	OrderID   string  `json:"orderId"`
-	Instrument string `json:"instrument"`
-	Side      string  `json:"side"`
-	Size      string  `json:"size"`
-	Price     string  `json:"price"`
-	FeeAmount string  `json:"feeAmount,omitempty"`
-	FeeAsset  string  `json:"feeAsset,omitempty"`
-	FilledAt  string  `json:"filledAt"`
+	ID         string  `json:"id"`
+	AccountID  string  `json:"accountId"`
+	Venue      venueID `json:"venue"`
+	OrderID    string  `json:"orderId"`
+	Instrument string  `json:"instrument"`
+	Side       string  `json:"side"`
+	Size       string  `json:"size"`
+	Price      string  `json:"price"`
+	FeeAmount  string  `json:"feeAmount,omitempty"`
+	FeeAsset   string  `json:"feeAsset,omitempty"`
+	FilledAt   string  `json:"filledAt"`
 }
 
 type perpFillsResponse struct {
