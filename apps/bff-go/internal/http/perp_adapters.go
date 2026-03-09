@@ -457,6 +457,13 @@ func (a *hyperliquidAdapter) GetPositions(
 	}, nil
 }
 
+func (a *hyperliquidAdapter) GetFills(
+	_ *http.Request,
+	_ perpFillsQuery,
+) (perpFillsResponse, error) {
+	return perpFillsResponse{}, errors.New("perp fills are not implemented for hyperliquid yet")
+}
+
 func (a *hyperliquidAdapter) GetOrderStatus(
 	r *http.Request,
 	query perpOrderStatusQuery,
@@ -601,6 +608,13 @@ func (a *asterMockAdapter) GetPositions(
 		},
 		Source: "mock",
 	}, nil
+}
+
+func (a *asterMockAdapter) GetFills(
+	_ *http.Request,
+	_ perpFillsQuery,
+) (perpFillsResponse, error) {
+	return perpFillsResponse{}, errors.New("perp fills are not implemented for aster yet")
 }
 
 func (a *asterMockAdapter) GetOrderStatus(

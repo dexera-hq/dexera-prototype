@@ -156,6 +156,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PerpPositionsResponse'
+  /api/v1/perp/fills:
+    get:
+      summary: Retrieve perpetual fills for an account
+      operationId: getPerpFills
+      tags:
+        - portfolio
+      parameters:
+        - in: query
+          name: accountId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: venue
+          required: true
+          schema:
+            $ref: '#/components/schemas/VenueId'
+        - in: query
+          name: instrument
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Account fills
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerpFillsResponse'
   /api/v1/perp/orders/status:
     get:
       summary: Retrieve perpetual order status for reconciliation
@@ -541,6 +570,63 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PerpPosition'
+        source:
+          type: string
+    PerpFill:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - accountId
+        - venue
+        - orderId
+        - instrument
+        - side
+        - size
+        - price
+        - filledAt
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        venue:
+          $ref: '#/components/schemas/VenueId'
+        orderId:
+          type: string
+        instrument:
+          type: string
+        side:
+          type: string
+          enum: [buy, sell]
+        size:
+          type: string
+        price:
+          type: string
+        feeAmount:
+          type: string
+        feeAsset:
+          type: string
+        filledAt:
+          type: string
+          format: date-time
+    PerpFillsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - accountId
+        - venue
+        - fills
+        - source
+      properties:
+        accountId:
+          type: string
+        venue:
+          $ref: '#/components/schemas/VenueId'
+        fills:
+          type: array
+          items:
+            $ref: '#/components/schemas/PerpFill'
         source:
           type: string
     PerpOrderStatusResponse:

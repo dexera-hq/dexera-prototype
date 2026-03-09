@@ -20,6 +20,8 @@ type fakeVenueAdapter struct {
 	submitError      error
 	positionsResp    perpPositionsResponse
 	positionsErr     error
+	fillsResp        perpFillsResponse
+	fillsErr         error
 	orderStatusResp  perpOrderStatusResponse
 	orderStatusErr   error
 	eligibilityResp  walletVenueEligibilityResult
@@ -40,6 +42,10 @@ func (a fakeVenueAdapter) SubmitSignedAction(_ *http.Request, _ submitSignedActi
 
 func (a fakeVenueAdapter) GetPositions(_ *http.Request, _ perpPositionsQuery) (perpPositionsResponse, error) {
 	return a.positionsResp, a.positionsErr
+}
+
+func (a fakeVenueAdapter) GetFills(_ *http.Request, _ perpFillsQuery) (perpFillsResponse, error) {
+	return a.fillsResp, a.fillsErr
 }
 
 func (a fakeVenueAdapter) GetOrderStatus(
@@ -452,6 +458,78 @@ func TestPerpPositionsHandler(t *testing.T) {
 
 func TestPerpPositionsHandlerMissingAccount(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/perp/positions?venue=aster", nil)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+}
+
+func TestPerpFillsHandler(t *testing.T) {
+	previousResolver := venueAdapterResolver
+	venueAdapterResolver = func(venue venueID) (perpVenueAdapter, error) {
+		if venue != venueHyperliquid {
+			t.Fatalf("expected venueHyperliquid, got %s", venue)
+		}
+		return fakeVenueAdapter{
+			fillsResp: perpFillsResponse{
+				AccountID: "acct_001",
+				Venue:     venueHyperliquid,
+				Fills: []perpFill{
+					{
+						ID:         "fill_001",
+						AccountID:  "acct_001",
+						Venue:      venueHyperliquid,
+						OrderID:    "ord_001",
+						Instrument: "BTC-PERP",
+						Side:       "buy",
+						Size:       "0.15",
+						Price:      "68450.25",
+						FilledAt:   "2026-01-01T00:00:00Z",
+					},
+				},
+				Source: "hyperliquid",
+			},
+		}, nil
+	}
+	defer func() {
+		venueAdapterResolver = previousResolver
+	}()
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/perp/fills?accountId=acct_001&venue=hyperliquid",
+		nil,
+	)
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected valid JSON body: %v", err)
+	}
+
+	if body["accountId"] != "acct_001" {
+		t.Fatalf("expected accountId=acct_001, got %v", body["accountId"])
+	}
+	if body["venue"] != "hyperliquid" {
+		t.Fatalf("expected venue=hyperliquid, got %v", body["venue"])
+	}
+	fills, ok := body["fills"].([]any)
+	if !ok || len(fills) != 1 {
+		t.Fatalf("expected one fill, got %v", body["fills"])
+	}
+}
+
+func TestPerpFillsHandlerMissingAccount(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/perp/fills?venue=aster", nil)
 	rr := httptest.NewRecorder()
 
 	NewMux().ServeHTTP(rr, req)
