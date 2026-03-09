@@ -23,6 +23,7 @@ import {
 import { PerpOrdersFillsPanel } from '@/components/workspace/perp-orders-fills-panel';
 import type { WorkspaceModule } from '@/components/workspace/types';
 import type { WorkspaceMarketDataState } from '@/components/workspace/use-workspace-market-data';
+import { getWalletVenueLabel } from '@/lib/wallet/chains';
 import { cn } from '@/lib/utils';
 
 const DEFAULT_INSTRUMENT_ORDER = ['BTC-PERP', 'ETH-PERP', 'SOL-PERP'];
@@ -83,6 +84,14 @@ function resolveTradeInstrument(marketData: WorkspaceMarketDataState): string {
 function parseNumeric(value: string): number {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function truncateAccountId(accountId: string): string {
+  if (accountId.length <= 14) {
+    return accountId;
+  }
+
+  return `${accountId.slice(0, 8)}...${accountId.slice(-4)}`;
 }
 
 function formatClock(timestampMs?: number): string {
@@ -533,11 +542,20 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
           <div className="rounded-xl border border-dashed border-border/70 bg-background/40 px-4 py-8 text-center text-sm text-muted-foreground">
             Loading positions...
           </div>
+        ) : positions.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/70 bg-background/40 px-4 py-8 text-center">
+            <p className="text-sm font-medium text-foreground">No connected wallet positions</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Connect a wallet slot to load live perp positions by wallet and venue.
+            </p>
+          </div>
         ) : (
           <ScrollArea className="max-h-[360px] rounded-xl border border-border/70 bg-background/20">
-            <Table className="min-w-[720px]">
+            <Table className="min-w-[860px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead>Wallet</TableHead>
+                  <TableHead>Venue</TableHead>
                   <TableHead>Instrument</TableHead>
                   <TableHead>Direction</TableHead>
                   <TableHead>Size</TableHead>
@@ -549,11 +567,14 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
               <TableBody>
                 {positions.map((position) => {
                   const instrument = position.instrument.toUpperCase();
-                  const instrumentMetadata = instrumentById.get(instrument);
                   const positive = parseNumeric(position.unrealizedPnlUsd) >= 0;
 
                   return (
-                    <TableRow key={`${instrument}-${position.direction}`}>
+                    <TableRow key={position.positionId}>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {truncateAccountId(position.accountId)}
+                      </TableCell>
+                      <TableCell>{getWalletVenueLabel(position.venue)}</TableCell>
                       <TableCell className="font-medium text-foreground">{instrument}</TableCell>
                       <TableCell>
                         <Badge
@@ -573,7 +594,6 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
                         )}
                       >
                         {formatUsd(position.unrealizedPnlUsd)}
-                        {instrumentMetadata?.venue ? ` · ${instrumentMetadata.venue}` : ''}
                       </TableCell>
                     </TableRow>
                   );
