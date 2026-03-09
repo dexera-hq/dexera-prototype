@@ -2,10 +2,11 @@ import { getDefaultVenue } from '@/lib/market-data/config';
 import {
   getMockInstruments,
   getMockMarkPrices,
+  getMockPerpFills,
   getMockPositions,
 } from '@/lib/market-data/mock-market-data';
 import type { MarketDataProvider } from '@/lib/market-data/provider';
-import type { InstrumentMetadata, MarkPrice, PerpPosition } from '@/lib/market-data/types';
+import type { InstrumentMetadata, MarkPrice, PerpFill, PerpPosition } from '@/lib/market-data/types';
 
 type MockMarketDataProviderOptions = {
   jitter: boolean;
@@ -45,6 +46,10 @@ export class MockMarketDataProvider implements MarketDataProvider {
 
   async getPositions(accountId?: string, _venue?: string): Promise<PerpPosition[]> {
     return getMockPositions(accountId);
+  }
+
+  async getPerpFills(accountId?: string, venue?: string): Promise<PerpFill[]> {
+    return getMockPerpFills(accountId, venue ?? this.defaultVenue);
   }
 
   private getVenueInstruments(venue?: string): string[] {

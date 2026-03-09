@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GET as getInstrumentsRoute } from '../app/api/mock/instruments/route';
+import { GET as getFillsRoute } from '../app/api/mock/fills/route';
 import { GET as getMarksRoute } from '../app/api/mock/marks/route';
 import { GET as getPositionsRoute } from '../app/api/mock/positions/route';
-import type { InstrumentMetadata, MarkPrice, PerpPosition } from '../lib/market-data/types';
+import type { InstrumentMetadata, MarkPrice, PerpFill, PerpPosition } from '../lib/market-data/types';
 
 const ORIGINAL_ENV = {
   MOCK_MARKET_DATA: process.env.MOCK_MARKET_DATA,
@@ -115,6 +116,26 @@ describe('mock market data routes', () => {
       instrument: expect.any(String),
       direction: expect.stringMatching(/long|short/),
       size: expect.any(String),
+    });
+  });
+
+  it('returns deterministic perp fills from /api/mock/fills', async () => {
+    const response = await getFillsRoute(
+      new Request('http://localhost/api/mock/fills?venue=aster&accountId=acct_001'),
+    );
+    const payload = (await response.json()) as PerpFill[];
+
+    expect(response.status).toBe(200);
+    expect(payload.length).toBeGreaterThan(0);
+    expect(payload[0]).toMatchObject({
+      venue: 'aster',
+      accountId: 'acct_001',
+      instrument: expect.any(String),
+      side: expect.stringMatching(/buy|sell/),
+      size: expect.any(String),
+      price: expect.any(String),
+      orderId: expect.any(String),
+      filledAt: expect.any(String),
     });
   });
 });
