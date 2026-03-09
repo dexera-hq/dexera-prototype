@@ -79,4 +79,46 @@ describe('submitSignedAction', () => {
       ),
     ).rejects.toThrow('Signed action submission failed with status 502.');
   });
+
+  it('returns debugReason when venue rejects an order', async () => {
+    const response = await submitSignedAction(
+      {
+        orderId: 'ord_hl_3',
+        signature: '0x' + '33'.repeat(65),
+        unsignedActionPayload: {
+          id: 'uap_hl_3',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          kind: 'perp_order_action',
+          action: {
+            action: {
+              type: 'order',
+            },
+            nonce: 1733000000002,
+          },
+          walletRequest: {
+            method: 'eth_signTypedData_v4',
+            params: ['0xabc123', '{}'],
+          },
+        },
+      },
+      {
+        fetchImpl: async () =>
+          ({
+            ok: true,
+            json: async () => ({
+              orderId: 'ord_hl_3',
+              actionHash: '0xhash_3',
+              venue: 'hyperliquid',
+              status: 'rejected',
+              debugReason: 'Order has invalid price.',
+              source: 'hyperliquid',
+            }),
+          }) as Response,
+      },
+    );
+
+    expect(response.status).toBe('rejected');
+    expect(response.debugReason).toBe('Order has invalid price.');
+  });
 });

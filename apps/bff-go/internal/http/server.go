@@ -245,6 +245,25 @@ type perpPositionsQuery struct {
 	Instrument string
 }
 
+type perpOrderStatusResponse struct {
+	AccountID     string  `json:"accountId"`
+	Venue         venueID `json:"venue"`
+	OrderID       string  `json:"orderId,omitempty"`
+	VenueOrderID  string  `json:"venueOrderId"`
+	Status        string  `json:"status"`
+	VenueStatus   string  `json:"venueStatus"`
+	IsTerminal    bool    `json:"isTerminal"`
+	LastUpdatedAt string  `json:"lastUpdatedAt"`
+	Source        string  `json:"source"`
+}
+
+type perpOrderStatusQuery struct {
+	AccountID    string
+	Venue        venueID
+	OrderID      string
+	VenueOrderID string
+}
+
 type perpVenueAdapter interface {
 	PreviewOrder(r *http.Request, req buildUnsignedActionRequest) (perpOrderPreviewResponse, error)
 	BuildUnsignedAction(r *http.Request, req buildUnsignedActionRequest) (buildUnsignedActionResponse, error)
@@ -253,6 +272,7 @@ type perpVenueAdapter interface {
 		req submitSignedActionRequest,
 	) (submitSignedActionResponse, error)
 	GetPositions(r *http.Request, query perpPositionsQuery) (perpPositionsResponse, error)
+	GetOrderStatus(r *http.Request, query perpOrderStatusQuery) (perpOrderStatusResponse, error)
 	CheckWalletEligibility(r *http.Request, address string) (walletVenueEligibilityResult, error)
 }
 
@@ -271,6 +291,7 @@ func NewMux() *http.ServeMux {
 	mux.HandleFunc("/api/v1/perp/actions/unsigned", buildUnsignedActionHandler)
 	mux.HandleFunc("/api/v1/perp/actions/submit", submitSignedActionHandler)
 	mux.HandleFunc("/api/v1/perp/positions", perpPositionsHandler)
+	mux.HandleFunc("/api/v1/perp/orders/status", perpOrderStatusHandler)
 	return mux
 }
 
@@ -553,6 +574,54 @@ func perpPositionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, positions)
+}
+
+func perpOrderStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	accountID := strings.TrimSpace(r.URL.Query().Get("accountId"))
+	if accountID == "" {
+		http.Error(w, "missing accountId query parameter", http.StatusBadRequest)
+		return
+	}
+
+	venue, err := parseVenue(strings.TrimSpace(r.URL.Query().Get("venue")))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if venue != venueHyperliquid {
+		http.Error(w, "order status reconciliation currently supports hyperliquid only", http.StatusBadRequest)
+		return
+	}
+
+	venueOrderID := strings.TrimSpace(r.URL.Query().Get("venueOrderId"))
+	if venueOrderID == "" {
+		http.Error(w, "missing venueOrderId query parameter", http.StatusBadRequest)
+		return
+	}
+
+	adapter, err := venueAdapterResolver(venue)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	orderStatus, err := adapter.GetOrderStatus(r, perpOrderStatusQuery{
+		AccountID:    accountID,
+		Venue:        venue,
+		OrderID:      strings.TrimSpace(r.URL.Query().Get("orderId")),
+		VenueOrderID: venueOrderID,
+	})
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, orderStatus)
 }
 
 func parseVenue(value string) (venueID, error) {

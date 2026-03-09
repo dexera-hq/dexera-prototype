@@ -72,3 +72,82 @@ func TestExtractHyperliquidSubmissionDebugReason(t *testing.T) {
 		}
 	})
 }
+
+func TestNormalizeHyperliquidOrderStatus(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "open stays open", input: "open", expected: "open"},
+		{name: "triggered maps to open", input: "triggered", expected: "open"},
+		{name: "filled stays filled", input: "filled", expected: "filled"},
+		{name: "cancel variants map to cancelled", input: "reduceOnlyCanceled", expected: "cancelled"},
+		{name: "reject variants map to rejected", input: "tickRejected", expected: "rejected"},
+		{name: "unknown maps to submitted", input: "scheduled", expected: "submitted"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			actual := normalizeHyperliquidOrderStatus(testCase.input)
+			if actual != testCase.expected {
+				t.Fatalf("expected %s, got %s", testCase.expected, actual)
+			}
+		})
+	}
+}
+
+func TestIsHyperliquidOrderStatusTerminal(t *testing.T) {
+	if !isHyperliquidOrderStatusTerminal("filled") {
+		t.Fatal("filled should be terminal")
+	}
+	if !isHyperliquidOrderStatusTerminal("cancelled") {
+		t.Fatal("cancelled should be terminal")
+	}
+	if !isHyperliquidOrderStatusTerminal("rejected") {
+		t.Fatal("rejected should be terminal")
+	}
+	if isHyperliquidOrderStatusTerminal("open") {
+		t.Fatal("open should not be terminal")
+	}
+}
+
+func TestExtractHyperliquidOrderStatusValue(t *testing.T) {
+	t.Run("reads top-level status", func(t *testing.T) {
+		actual := extractHyperliquidOrderStatusValue(map[string]any{"status": "filled"})
+		if actual != "filled" {
+			t.Fatalf("expected filled, got %s", actual)
+		}
+	})
+
+	t.Run("reads nested order status payload", func(t *testing.T) {
+		actual := extractHyperliquidOrderStatusValue(map[string]any{
+			"status": "order",
+			"order": map[string]any{
+				"status": "open",
+			},
+		})
+		if actual != "open" {
+			t.Fatalf("expected open, got %s", actual)
+		}
+	})
+}
+
+func TestNormalizeHyperliquidPerpPriceWire(t *testing.T) {
+	t.Run("rounds to hyperliquid perp price precision", func(t *testing.T) {
+		price, err := normalizeHyperliquidPerpPriceWire(2743.123456, 4)
+		if err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+		if price != "2743.1" {
+			t.Fatalf("expected 2743.1, got %s", price)
+		}
+	})
+
+	t.Run("rejects invalid non-positive price", func(t *testing.T) {
+		_, err := normalizeHyperliquidPerpPriceWire(0, 4)
+		if err == nil {
+			t.Fatal("expected error for zero price")
+		}
+	})
+}
