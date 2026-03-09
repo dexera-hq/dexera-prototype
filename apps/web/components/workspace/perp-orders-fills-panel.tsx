@@ -2,6 +2,7 @@
 
 import type { PerpFill } from '@/lib/market-data/types';
 import { useEffect, useMemo, useState } from 'react';
+import { getPerpFills } from '@/lib/market-data/get-perp-fills';
 import { getWalletVenueLabel } from '@/lib/wallet/chains';
 import {
   formatTrackedPerpActionStatusLabel,
@@ -110,17 +111,29 @@ export function PerpOrdersFillsPanel() {
     setFillsLoading(true);
     setFillsError(null);
 
-    void fetch(
-      `/api/mock/fills?venue=${encodeURIComponent(activeSlot.venue)}&accountId=${encodeURIComponent(activeSlot.accountId)}`,
-      { signal: abortController.signal },
-    )
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`Fills request failed (${response.status})`);
-        }
+    const fillsRequest =
+      activeSlot.venue === 'hyperliquid'
+        ? getPerpFills(
+            {
+              accountId: activeSlot.accountId,
+              venue: 'hyperliquid',
+            },
+            {
+              fetchImpl: (input, init) => fetch(input, { ...init, signal: abortController.signal }),
+            },
+          ).then((response) => response.fills as PerpFill[])
+        : fetch(
+            `/api/mock/fills?venue=${encodeURIComponent(activeSlot.venue)}&accountId=${encodeURIComponent(activeSlot.accountId)}`,
+            { signal: abortController.signal },
+          ).then(async (response) => {
+            if (!response.ok) {
+              throw new Error(`Fills request failed (${response.status})`);
+            }
 
-        return (await response.json()) as PerpFill[];
-      })
+            return (await response.json()) as PerpFill[];
+          });
+
+    void fillsRequest
       .then((payload) => {
         if (!abortController.signal.aborted) {
           setFills(payload);
