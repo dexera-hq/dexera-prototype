@@ -1,21 +1,22 @@
 'use client';
 
+import { useRef } from 'react';
 import { WorkspaceModuleCard } from '@/components/workspace/module-card';
 import { TerminalHeader } from '@/components/workspace/terminal-header';
 import { useWorkspaceMarketData } from '@/components/workspace/use-workspace-market-data';
 import { useWorkspaceModules } from '@/components/workspace/use-workspace-modules';
-import { WorkspaceToolbar } from '@/components/workspace/workspace-toolbar';
 import { SubmittedPerpActionsTrackerProvider } from '@/lib/wallet/use-submitted-perp-actions';
 import { useWalletManager } from '@/lib/wallet/wallet-manager-context';
 
 export function TradingWorkspace() {
   const { activeSlot } = useWalletManager();
   const marketData = useWorkspaceMarketData();
+  const gridRef = useRef<HTMLElement | null>(null);
   const {
     modules,
     draggingId,
-    dropTargetId,
-    addModule,
+    dropTarget,
+    resizingId,
     removeModule,
     resetLayout,
     handleDragStart,
@@ -24,15 +25,16 @@ export function TradingWorkspace() {
     handlePointerUpOnModule,
     handleDragOverModule,
     handleDropOnModule,
+    handleDragOverCanvas,
     handleDropOnCanvas,
+    handleResizeStart,
     clearDragState,
-  } = useWorkspaceModules();
+  } = useWorkspaceModules(gridRef);
 
   return (
-    <main className="terminal-page">
-      <section className="terminal-shell">
-        <TerminalHeader />
-        <WorkspaceToolbar onAddModule={addModule} onResetLayout={resetLayout} />
+    <main className="min-h-screen px-4 py-4 sm:px-6 sm:py-6">
+      <section className="mx-auto flex w-full max-w-[1680px] flex-col gap-4">
+        <TerminalHeader onResetLayout={resetLayout} />
 
         <SubmittedPerpActionsTrackerProvider
           activeWallet={
@@ -45,18 +47,22 @@ export function TradingWorkspace() {
           }
         >
           <section
-            className="workspace-grid"
+            ref={gridRef}
+            className="grid grid-cols-1 gap-4 md:grid-cols-12"
             aria-label="Trading workspace modules"
-            onDragOver={(event) => event.preventDefault()}
+            onDragOver={handleDragOverCanvas}
             onDrop={handleDropOnCanvas}
           >
             {modules.map((module) => (
               <WorkspaceModuleCard
-                key={module.id}
-                module={module}
+                key={module.module.id}
+                module={module.module}
+                columnStart={module.columnStart}
+                columnSpan={module.columnSpan}
                 marketData={marketData}
                 draggingId={draggingId}
-                dropTargetId={dropTargetId}
+                dropTarget={dropTarget}
+                isResizing={resizingId === module.module.id}
                 onRemove={removeModule}
                 onDragStart={handleDragStart}
                 onPointerDownOnModule={handlePointerDownOnModule}
@@ -64,6 +70,7 @@ export function TradingWorkspace() {
                 onPointerUpOnModule={handlePointerUpOnModule}
                 onDragOverModule={handleDragOverModule}
                 onDropOnModule={handleDropOnModule}
+                onResizeStart={handleResizeStart}
                 onDragEnd={clearDragState}
               />
             ))}

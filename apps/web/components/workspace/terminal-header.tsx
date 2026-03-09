@@ -1,29 +1,44 @@
+import { PanelsTopLeft, RotateCcw } from 'lucide-react';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { WalletConnectButton } from '@/components/workspace/wallet-connect-button';
 
-export function TerminalHeader() {
+type TerminalHeaderProps = {
+  onResetLayout: () => void;
+};
+
+export function TerminalHeader({ onResetLayout }: TerminalHeaderProps) {
   return (
-    <header className="terminal-topbar">
-      <div className="brand-wrap">
-        <Button
-          type="button"
-          variant="soft"
-          size="icon"
-          className="icon-button"
-          aria-label="Open navigation"
-        >
-          &#9776;
-        </Button>
-        <h1 className="brand" data-testid="app-brand">
-          DEXERA <span>BETA</span>
-        </h1>
-      </div>
-      <div className="topbar-actions">
-        <Button type="button" variant="outline">
-          Customize
-        </Button>
-        <WalletConnectButton />
-      </div>
-    </header>
+    <Card className="overflow-hidden border-border/80 bg-background/75 backdrop-blur">
+      <CardContent className="flex flex-col gap-4 p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="rounded-xl border border-border/70 bg-card/90 p-3 text-foreground shadow-sm">
+              <PanelsTopLeft className="size-5" />
+            </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight" data-testid="app-brand">
+                  Dexera
+                </h1>
+                <Badge variant="outline" className="border-border/70 bg-background/50">
+                  Prototype
+                </Badge>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="secondary" onClick={onResetLayout}>
+              <RotateCcw className="size-4" />
+              Reset Layout
+            </Button>
+            <WalletConnectButton />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

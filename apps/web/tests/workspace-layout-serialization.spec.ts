@@ -14,14 +14,14 @@ describe('workspace layout serialization', () => {
           id: 2,
           kind: 'custom',
           label: 'B',
-          size: 'normal',
+          layout: { columns: 5, minHeight: 320 },
           config: { z: 2, a: 1, nested: { y: true, x: false } },
         },
         {
           id: 1,
           kind: 'overview',
           label: 'A',
-          size: 'full',
+          layout: { columns: 12, minHeight: 190 },
           config: { stats: { gamma: 3, alpha: 1 }, mode: 'perp' },
         },
       ],
@@ -29,7 +29,7 @@ describe('workspace layout serialization', () => {
 
     const serialized = serializeWorkspaceLayout(workspaceState);
     expect(serialized).toBe(
-      '{"version":1,"nextModuleId":3,"layout":[2,1],"blocks":[{"id":1,"kind":"overview","label":"A","size":"full","config":{"mode":"perp","stats":{"alpha":1,"gamma":3}}},{"id":2,"kind":"custom","label":"B","size":"normal","config":{"a":1,"nested":{"x":false,"y":true},"z":2}}]}',
+      '{"version":2,"nextModuleId":3,"layout":[2,1],"blocks":[{"id":1,"kind":"overview","label":"A","layout":{"columns":12,"minHeight":190},"config":{"mode":"perp","stats":{"alpha":1,"gamma":3}}},{"id":2,"kind":"custom","label":"B","layout":{"columns":5,"minHeight":320},"config":{"a":1,"nested":{"x":false,"y":true},"z":2}}]}',
     );
   });
 
@@ -41,7 +41,7 @@ describe('workspace layout serialization', () => {
           id: 10,
           kind: 'trade',
           label: 'Trade Panel',
-          size: 'normal',
+          layout: { columns: 4, minHeight: 440 },
           config: {
             mode: 'limit',
             allocations: [25, 50, 75, 100],
@@ -52,7 +52,7 @@ describe('workspace layout serialization', () => {
           id: 7,
           kind: 'chart',
           label: 'Chart',
-          size: 'wide',
+          layout: { columns: 8, minHeight: 360 },
           config: { indicators: ['ema', 'rsi'], timeframe: '1h' },
         },
       ],
@@ -65,7 +65,7 @@ describe('workspace layout serialization', () => {
     expect(serializeWorkspaceLayout(deserialized as WorkspaceLayoutState)).toBe(serialized);
   });
 
-  it('deserializes layout ids and appends blocks missing from layout', () => {
+  it('migrates version one size-based payloads into explicit layout data', () => {
     const deserialized = deserializeWorkspaceLayout(
       JSON.stringify({
         version: 1,
@@ -81,15 +81,27 @@ describe('workspace layout serialization', () => {
     expect(deserialized).toEqual({
       nextModuleId: 21,
       modules: [
-        { id: 20, kind: 'orderbook', label: 'Order Book', size: 'normal', config: {} },
-        { id: 3, kind: 'positions', label: 'Positions', size: 'wide', config: { a: 1, b: 2 } },
+        {
+          id: 20,
+          kind: 'orderbook',
+          label: 'Order Book',
+          layout: { columns: 4, minHeight: 340 },
+          config: {},
+        },
+        {
+          id: 3,
+          kind: 'positions',
+          label: 'Positions',
+          layout: { columns: 8, minHeight: 320 },
+          config: { a: 1, b: 2 },
+        },
       ],
     });
   });
 
   it('returns null for invalid payloads', () => {
     expect(deserializeWorkspaceLayout('not-json')).toBeNull();
-    expect(deserializeWorkspaceLayout(JSON.stringify({ version: 2 }))).toBeNull();
+    expect(deserializeWorkspaceLayout(JSON.stringify({ version: 99 }))).toBeNull();
   });
 
   it('sorts config keys without locale-dependent collation', () => {
@@ -106,7 +118,7 @@ describe('workspace layout serialization', () => {
             id: 1,
             kind: 'overview',
             label: 'Overview',
-            size: 'full',
+            layout: { columns: 12, minHeight: 190 },
             config: { b: 2, a: 1 },
           },
         ],
@@ -126,7 +138,7 @@ describe('workspace layout serialization', () => {
           id: 1,
           kind: 'custom',
           label: 'Custom',
-          size: 'normal',
+          layout: { columns: 4, minHeight: 280 },
           config: {
             keep: 'ok',
             invalidTopLevel: Number.POSITIVE_INFINITY,

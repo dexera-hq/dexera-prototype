@@ -3,6 +3,18 @@
 import type { PerpFill } from '@/lib/market-data/types';
 import { buildUnsignedCancelAction } from '@/lib/wallet/build-unsigned-cancel-action';
 import { useEffect, useMemo, useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { getPerpFills } from '@/lib/market-data/get-perp-fills';
 import { getWalletVenueLabel } from '@/lib/wallet/chains';
 import { signRuntimeSlotActionPayload } from '@/lib/wallet/multi-session-runtime';
@@ -107,14 +119,30 @@ function toFillRow(fill: PerpFill): ActivityRow {
   };
 }
 
+function getStatusVariant(row: ActivityRow) {
+  if (row.statusClassName.includes('filled')) {
+    return 'success';
+  }
+
+  if (
+    row.statusClassName.includes('cancelled') ||
+    row.statusClassName.includes('rejected') ||
+    row.statusClassName.includes('failed')
+  ) {
+    return 'destructive';
+  }
+
+  if (row.statusClassName.includes('reconciling')) {
+    return 'warning';
+  }
+
+  return 'secondary';
+}
+
 export function PerpOrdersFillsPanel() {
   const { activeSlot } = useWalletManager();
-  const {
-    actions,
-    markActionCancelFailed,
-    markActionCancelStarted,
-    markActionCancelSubmitted,
-  } = useSubmittedPerpActionsTracker();
+  const { actions, markActionCancelFailed, markActionCancelStarted, markActionCancelSubmitted } =
+    useSubmittedPerpActionsTracker();
   const [fills, setFills] = useState<PerpFill[]>([]);
   const [fillsLoading, setFillsLoading] = useState(false);
   const [fillsError, setFillsError] = useState<string | null>(null);
@@ -234,7 +262,8 @@ export function PerpOrdersFillsPanel() {
 
       if (venueSubmission.status.trim().toLowerCase() !== 'submitted') {
         const debugReason =
-          typeof venueSubmission.debugReason === 'string' && venueSubmission.debugReason.trim().length
+          typeof venueSubmission.debugReason === 'string' &&
+          venueSubmission.debugReason.trim().length
             ? ` ${venueSubmission.debugReason}`
             : '';
         throw new Error(
@@ -265,93 +294,151 @@ export function PerpOrdersFillsPanel() {
   }
 
   return (
-    <div className="perp-activity-panel">
-      <div className="perp-activity-panel-header">
-        <div>
-          <p className="perp-activity-panel-title">Recent Perp Orders & Fills</p>
-          <p className="perp-activity-panel-copy">
-            Dedicated workspace block for Hyperliquid and Aster perp activity.
-          </p>
+    <div className="flex h-full flex-col gap-4">
+      {cancelError ? (
+        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+          {cancelError}
         </div>
-        <span className="perp-activity-panel-pill">Prototype</span>
-      </div>
-      {cancelError ? <p className="perp-activity-panel-error">{cancelError}</p> : null}
+      ) : null}
 
-      <div className="perp-activity-table-shell" aria-label="Perp orders and fills table">
-        <div className="perp-activity-table-head">
-          <span>Time</span>
-          <span>Type</span>
-          <span>Instrument</span>
-          <span>Side</span>
-          <span>Size</span>
-          <span>Status</span>
-          <span>Venue</span>
-          <span>Details</span>
-          <span>Action</span>
-        </div>
-
-        {rows.length > 0 ? (
-          <div className="perp-activity-table-body">
+      {rows.length > 0 ? (
+        <>
+          <div className="grid gap-3 md:hidden">
             {rows.map((row) => {
               const cancelAction = row.cancelState === 'available' ? row.action : undefined;
 
               return (
-                <div className="perp-activity-table-row" key={row.rowKey}>
-                  <span>{formatTimestamp(row.timestamp)}</span>
-                  <span>{row.type}</span>
-                  <span>{row.instrument}</span>
-                  <span>{row.side}</span>
-                  <span>{row.size}</span>
-                  <span>
-                    <span className={`perp-activity-status ${row.statusClassName}`}>{row.status}</span>
-                  </span>
-                  <span>{row.venueLabel}</span>
-                  <span className="perp-activity-row-details">{row.details}</span>
-                  <span>
+                <div
+                  key={row.rowKey}
+                  className="rounded-xl border border-border/70 bg-background/40 p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{row.instrument}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatTimestamp(row.timestamp)}
+                      </p>
+                    </div>
+                    <Badge variant={getStatusVariant(row)}>{row.status}</Badge>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Type</p>
+                      <p className="font-medium text-foreground">{row.type}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Side</p>
+                      <p className="font-medium text-foreground">{row.side}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Size</p>
+                      <p className="font-medium text-foreground">{row.size}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Venue</p>
+                      <p className="font-medium text-foreground">{row.venueLabel}</p>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-sm text-muted-foreground">{row.details}</p>
+                  <div className="mt-4">
                     {cancelAction ? (
-                      <button
-                        className="perp-activity-action-button"
-                        onClick={() => void handleCancelAction(cancelAction)}
+                      <Button
                         type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleCancelAction(cancelAction)}
                       >
                         Cancel
-                      </button>
+                      </Button>
                     ) : row.cancelState === 'pending' ? (
-                      <button
-                        aria-busy="true"
-                        className="perp-activity-action-button is-pending"
-                        disabled
-                        type="button"
-                      >
+                      <Button type="button" size="sm" variant="outline" disabled>
                         Cancelling...
-                      </button>
+                      </Button>
                     ) : (
-                      <span className="perp-activity-action-copy">
-                        not supported by venue/order state
-                      </span>
+                      <p className="text-xs text-muted-foreground">
+                        Cancellation not supported for this venue or order state.
+                      </p>
                     )}
-                  </span>
+                  </div>
                 </div>
               );
             })}
           </div>
-        ) : (
-          <div className="perp-activity-empty">
-            <p>
-              {activeSlot
-                ? `No recent perp orders tracked yet for ${getWalletVenueLabel(activeSlot.venue)}.`
-                : 'Connect a wallet to start tracking recent perp orders in this block.'}
-            </p>
-            <p>
-              {fillsLoading
-                ? 'Loading recent fills...'
-                : fillsError
-                  ? fillsError
-                  : 'No recent fills available for this wallet yet.'}
-            </p>
-          </div>
-        )}
-      </div>
+
+          <ScrollArea className="hidden min-h-0 flex-1 rounded-xl border border-border/70 bg-background/20 md:block">
+            <Table className="min-w-[900px]">
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Time</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Instrument</TableHead>
+                  <TableHead>Side</TableHead>
+                  <TableHead>Size</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Venue</TableHead>
+                  <TableHead>Details</TableHead>
+                  <TableHead>Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => {
+                  const cancelAction = row.cancelState === 'available' ? row.action : undefined;
+
+                  return (
+                    <TableRow key={row.rowKey}>
+                      <TableCell>{formatTimestamp(row.timestamp)}</TableCell>
+                      <TableCell>{row.type}</TableCell>
+                      <TableCell className="font-medium text-foreground">
+                        {row.instrument}
+                      </TableCell>
+                      <TableCell>{row.side}</TableCell>
+                      <TableCell>{row.size}</TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusVariant(row)}>{row.status}</Badge>
+                      </TableCell>
+                      <TableCell>{row.venueLabel}</TableCell>
+                      <TableCell className="text-muted-foreground">{row.details}</TableCell>
+                      <TableCell>
+                        {cancelAction ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void handleCancelAction(cancelAction)}
+                          >
+                            Cancel
+                          </Button>
+                        ) : row.cancelState === 'pending' ? (
+                          <Button type="button" size="sm" variant="outline" disabled>
+                            Cancelling...
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Not supported</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        </>
+      ) : (
+        <div className="rounded-xl border border-dashed border-border/80 bg-background/40 px-4 py-8 text-center">
+          <p className="text-sm font-medium text-foreground">
+            {activeSlot
+              ? `No recent perp orders tracked yet for ${getWalletVenueLabel(activeSlot.venue)}.`
+              : 'Connect a wallet to start tracking recent perp orders in this block.'}
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {fillsLoading
+              ? 'Loading recent fills...'
+              : fillsError
+                ? fillsError
+                : 'No recent fills available for this wallet yet.'}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

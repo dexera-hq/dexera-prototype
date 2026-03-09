@@ -8,7 +8,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'corepack pnpm dev:test',
+    command: 'pnpm dev:test',
     port: 3001,
     timeout: 120_000,
     reuseExistingServer: !process.env.CI,
