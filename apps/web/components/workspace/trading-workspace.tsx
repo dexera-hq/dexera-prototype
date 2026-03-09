@@ -29,10 +29,14 @@ export function TradingWorkspace() {
   } = useWorkspaceModules();
 
   return (
-    <main className="terminal-page">
-      <section className="terminal-shell">
+    <main className="min-h-screen px-4 py-4 sm:px-6 sm:py-6">
+      <section className="mx-auto flex w-full max-w-[1680px] flex-col gap-4">
         <TerminalHeader />
-        <WorkspaceToolbar onAddModule={addModule} onResetLayout={resetLayout} />
+        <WorkspaceToolbar
+          moduleCount={modules.length}
+          onAddModule={addModule}
+          onResetLayout={resetLayout}
+        />
 
         <SubmittedPerpActionsTrackerProvider
           activeWallet={
@@ -45,7 +49,7 @@ export function TradingWorkspace() {
           }
         >
           <section
-            className="workspace-grid"
+            className="grid grid-cols-1 gap-4 xl:grid-cols-12"
             aria-label="Trading workspace modules"
             onDragOver={(event) => event.preventDefault()}
             onDrop={handleDropOnCanvas}

@@ -1,9 +1,27 @@
 'use client';
 
 import type { VenueId } from '@dexera/shared-types';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Wallet } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import { SUPPORTED_VENUES, getWalletVenueLabel } from '@/lib/wallet/chains';
 import {
   isWalletSlotTradable,
@@ -96,6 +114,36 @@ function getConnectFailureMessage(reason: ConnectWalletReason): string {
   return 'Unable to connect wallet right now.';
 }
 
+function getStatusBadgeVariant(status: WalletSlotStatus): 'secondary' | 'outline' | 'warning' {
+  if (status === 'connected') {
+    return 'secondary';
+  }
+
+  if (status === 'stale') {
+    return 'warning';
+  }
+
+  return 'outline';
+}
+
+function getEligibilityBadgeVariant(
+  slot: WalletSlot,
+): 'success' | 'warning' | 'outline' | 'destructive' {
+  if (isWalletSlotTradable(slot)) {
+    return 'success';
+  }
+
+  if (slot.ownershipStatus === 'failed' || slot.eligibilityStatus === 'error') {
+    return 'destructive';
+  }
+
+  if (slot.eligibilityStatus === 'checking') {
+    return 'warning';
+  }
+
+  return 'outline';
+}
+
 export function WalletConnectButton() {
   const {
     activeSlot,
@@ -119,10 +167,7 @@ export function WalletConnectButton() {
   const [selectedVenue, setSelectedVenue] = useState<VenueId>('hyperliquid');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  const rootRef = useRef<HTMLDivElement>(null);
-
   const connectorOptions = getConnectorOptions();
-
   const hasAnyPendingAction = pendingAction !== null;
   const selectedConnectorOption = connectorOptions.find(
     (option) => option.id === selectedConnector,
@@ -140,32 +185,6 @@ export function WalletConnectButton() {
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    function handleDocumentClick(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleDocumentClick);
-    document.addEventListener('keydown', handleEscape);
-
-    return () => {
-      document.removeEventListener('mousedown', handleDocumentClick);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOpen]);
 
   useEffect(() => {
     if (selectedConnectorOption?.available) {
@@ -239,6 +258,7 @@ export function WalletConnectButton() {
 
   function handleSwitchWallet(slotId: string) {
     setActiveSlot(slotId);
+    setActionMessage(null);
   }
 
   function handleClearAllSlots() {
@@ -247,160 +267,240 @@ export function WalletConnectButton() {
   }
 
   return (
-    <div className="wallet-dropdown" ref={rootRef}>
+    <>
       <Button
         type="button"
-        variant="soft"
-        className="wallet-dropdown-trigger"
-        onClick={() => setIsOpen((currentValue) => !currentValue)}
+        variant="outline"
+        onClick={() => setIsOpen(true)}
         disabled={!isMounted || !hasHydrated}
+        className="max-w-full justify-start gap-3 sm:min-w-[280px]"
       >
-        <span className="wallet-summary" aria-live="polite">
-          <span className="wallet-summary-address">{walletSummaryLabel}</span>
-          <span className="wallet-summary-count">{`${slots.length}/3`}</span>
-        </span>
+        <Wallet className="size-4" />
+        <span className="truncate text-left">{walletSummaryLabel}</span>
+        <Badge variant="secondary" className="ml-auto hidden sm:inline-flex">
+          {slots.length}/3
+        </Badge>
       </Button>
 
-      {isOpen ? (
-        <div className="wallet-dropdown-panel" role="menu" aria-label="Wallet manager">
-          <div className="wallet-slot-list">
-            {slots.length === 0 ? (
-              <p className="wallet-empty">No wallets connected.</p>
-            ) : (
-              slots.map((slot) => (
-                <div key={slot.id} className="wallet-slot-row">
-                  <div className="wallet-slot-meta">
-                    <p className="wallet-slot-address">{truncateAccountId(slot.accountId)}</p>
-                    <p className="wallet-slot-chain">{getWalletVenueLabel(slot.venue)}</p>
-                    <span className={`wallet-slot-status wallet-slot-status-${slot.status}`}>
-                      {getStatusLabel(slot.status)}
-                    </span>
-                    <span className="wallet-slot-status">{getEligibilityLabel(slot)}</span>
-                    {activeSlotId === slot.id ? (
-                      <span className="wallet-slot-active">Active</span>
-                    ) : null}
-                    {slot.eligibilityReason ? (
-                      <p className="wallet-connect-feedback">{slot.eligibilityReason}</p>
-                    ) : null}
-                  </div>
-                  <div className="wallet-slot-actions">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleSwitchWallet(slot.id)}
-                      disabled={hasAnyPendingAction || activeSlotId === slot.id}
-                    >
-                      Switch
-                    </Button>
-                    {slot.status === 'connected' ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => void handleDisconnectWallet(slot.id)}
-                        disabled={hasAnyPendingAction}
-                      >
-                        {isActionPending(`disconnect-${slot.id}`)
-                          ? 'Disconnecting...'
-                          : 'Disconnect'}
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => void handleReconnectWallet(slot.id)}
-                        disabled={hasAnyPendingAction}
-                      >
-                        {isActionPending(`reconnect-${slot.id}`) ? 'Reconnecting...' : 'Reconnect'}
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleRemoveWallet(slot.id)}
-                      disabled={hasAnyPendingAction}
-                    >
-                      Remove
-                    </Button>
-                  </div>
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="max-h-[90vh] overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="border-b border-border px-6 py-5">
+            <DialogTitle>Wallet Sessions</DialogTitle>
+            <DialogDescription>
+              Connect, verify, switch, and manage venue-specific wallet slots without leaving the
+              workspace.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-0 lg:grid-cols-[1.45fr_0.95fr]">
+            <div className="flex min-h-0 flex-col border-b border-border lg:border-b-0 lg:border-r">
+              <div className="flex items-center justify-between px-6 py-4">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Connected Slots</p>
+                  <p className="text-sm text-muted-foreground">
+                    Up to three wallet sessions can stay active at once.
+                  </p>
                 </div>
-              ))
-            )}
-          </div>
+                <Badge variant="outline" className="border-border/70 bg-background/60">
+                  {slots.length} total
+                </Badge>
+              </div>
 
-          <div className="wallet-connect-controls">
-            <label htmlFor="wallet-connector-select" className="wallet-connector-label">
-              Connector
-            </label>
-            <select
-              id="wallet-connector-select"
-              className="wallet-connector-select"
-              value={selectedConnector}
-              onChange={(event) => setSelectedConnector(event.target.value as WalletConnectorId)}
-              disabled={hasAnyPendingAction}
-            >
-              {connectorOptions.map((option) => (
-                <option key={option.id} value={option.id} disabled={!option.available}>
-                  {option.label}
-                  {option.available
-                    ? ''
-                    : ` (${getUnavailableConnectorHint(option.unavailableReason)})`}
-                </option>
-              ))}
-            </select>
+              <ScrollArea className="max-h-[48vh] px-6 pb-6">
+                <div className="space-y-3 pr-4">
+                  {slots.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border/80 bg-background/40 p-4">
+                      <p className="text-sm font-medium text-foreground">No wallets connected.</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Add a wallet on the right to start submitting venue actions.
+                      </p>
+                    </div>
+                  ) : (
+                    slots.map((slot) => (
+                      <div
+                        key={slot.id}
+                        className="rounded-xl border border-border/80 bg-background/40 p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium text-foreground">
+                                {truncateAccountId(slot.accountId)}
+                              </p>
+                              <Badge
+                                variant={getStatusBadgeVariant(slot.status)}
+                                className="uppercase"
+                              >
+                                {getStatusLabel(slot.status)}
+                              </Badge>
+                              <Badge
+                                variant={getEligibilityBadgeVariant(slot)}
+                                className="uppercase"
+                              >
+                                {getEligibilityLabel(slot)}
+                              </Badge>
+                              {activeSlotId === slot.id ? (
+                                <Badge variant="outline" className="uppercase">
+                                  Active
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {getWalletVenueLabel(slot.venue)}
+                            </p>
+                            {slot.eligibilityReason ? (
+                              <p className="text-sm text-muted-foreground">
+                                {slot.eligibilityReason}
+                              </p>
+                            ) : null}
+                          </div>
 
-            <label htmlFor="wallet-venue-select" className="wallet-connector-label">
-              Venue
-            </label>
-            <select
-              id="wallet-venue-select"
-              className="wallet-connector-select"
-              value={selectedVenue}
-              onChange={(event) => setSelectedVenue(event.target.value as VenueId)}
-              disabled={hasAnyPendingAction}
-            >
-              {SUPPORTED_VENUES.map((venue) => (
-                <option key={venue} value={venue}>
-                  {getWalletVenueLabel(venue)}
-                </option>
-              ))}
-            </select>
-
-            <div className="wallet-connect-actions">
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void handleConnectWallet()}
-                disabled={
-                  !canAddWallet ||
-                  hasAnyPendingAction ||
-                  !selectedConnectorOption ||
-                  !selectedConnectorOption.available
-                }
-              >
-                {isActionPending('connect') ? 'Connecting...' : 'Add Wallet'}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={handleClearAllSlots}
-                disabled={slots.length === 0 || hasAnyPendingAction}
-              >
-                Clear All
-              </Button>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleSwitchWallet(slot.id)}
+                              disabled={hasAnyPendingAction || activeSlotId === slot.id}
+                            >
+                              Switch
+                            </Button>
+                            {slot.status === 'connected' ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => void handleDisconnectWallet(slot.id)}
+                                disabled={hasAnyPendingAction}
+                              >
+                                {isActionPending(`disconnect-${slot.id}`)
+                                  ? 'Disconnecting...'
+                                  : 'Disconnect'}
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => void handleReconnectWallet(slot.id)}
+                                disabled={hasAnyPendingAction}
+                              >
+                                {isActionPending(`reconnect-${slot.id}`)
+                                  ? 'Reconnecting...'
+                                  : 'Reconnect'}
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleRemoveWallet(slot.id)}
+                              disabled={hasAnyPendingAction}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
             </div>
-            {actionMessage ? (
-              <p className="wallet-connect-feedback" role="status" aria-live="polite">
-                {actionMessage}
-              </p>
-            ) : null}
+
+            <div className="flex flex-col gap-4 px-6 py-5">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">Add Wallet</p>
+                <p className="text-sm text-muted-foreground">
+                  Choose a connector and venue. Connected slots remain independently switchable.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Connector</label>
+                <Select
+                  value={selectedConnector}
+                  onValueChange={(value) => setSelectedConnector(value as WalletConnectorId)}
+                  disabled={hasAnyPendingAction}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select connector" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {connectorOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id} disabled={!option.available}>
+                        {option.label}
+                        {option.available
+                          ? ''
+                          : ` (${getUnavailableConnectorHint(option.unavailableReason)})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Venue</label>
+                <Select
+                  value={selectedVenue}
+                  onValueChange={(value) => setSelectedVenue(value as VenueId)}
+                  disabled={hasAnyPendingAction}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select venue" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SUPPORTED_VENUES.map((venue) => (
+                      <SelectItem key={venue} value={venue}>
+                        {getWalletVenueLabel(venue)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Button
+                  type="button"
+                  onClick={() => void handleConnectWallet()}
+                  disabled={
+                    !canAddWallet ||
+                    hasAnyPendingAction ||
+                    !selectedConnectorOption ||
+                    !selectedConnectorOption.available
+                  }
+                >
+                  {isActionPending('connect') ? 'Connecting...' : 'Add Wallet'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleClearAllSlots}
+                  disabled={slots.length === 0 || hasAnyPendingAction}
+                >
+                  Clear All
+                </Button>
+              </div>
+
+              <Separator />
+
+              <div className="rounded-xl border border-border/80 bg-background/40 p-4">
+                <p className="text-sm font-medium text-foreground">Active session</p>
+                <p className="mt-1 text-sm text-muted-foreground">{walletSummaryLabel}</p>
+                {actionMessage ? (
+                  <p
+                    className="mt-3 text-sm text-muted-foreground"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {actionMessage}
+                  </p>
+                ) : null}
+              </div>
+            </div>
           </div>
-        </div>
-      ) : null}
-    </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

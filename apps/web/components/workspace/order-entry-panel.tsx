@@ -1,10 +1,23 @@
 'use client';
 
 import type { BffBuildUnsignedActionResponse, BffVenueId } from '@dexera/api-types/openapi';
+import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { WorkspaceMarketDataState } from '@/components/workspace/use-workspace-market-data';
 import { buildUnsignedAction } from '@/lib/wallet/build-unsigned-transaction';
 import { getWalletVenueLabel, SUPPORTED_VENUES } from '@/lib/wallet/chains';
@@ -33,10 +46,9 @@ import {
 } from '@/lib/wallet/transaction-guardrails';
 import type { ActionSubmissionResult } from '@/lib/wallet/types';
 import { isWalletSlotTradable } from '@/lib/wallet/types';
-import {
-  useSubmittedPerpActionsTracker,
-} from '@/lib/wallet/use-submitted-perp-actions';
+import { useSubmittedPerpActionsTracker } from '@/lib/wallet/use-submitted-perp-actions';
 import { useWalletManager } from '@/lib/wallet/wallet-manager-context';
+import { cn } from '@/lib/utils';
 
 type OrderEntryExecutionState =
   | { status: 'idle'; message: string }
@@ -88,6 +100,22 @@ function getWalletBlockingMessage(parameters: {
   }
 
   return null;
+}
+
+function getExecutionTone(status: OrderEntryExecutionState['status']) {
+  if (status === 'success') {
+    return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100';
+  }
+
+  if (status === 'error') {
+    return 'border-rose-500/30 bg-rose-500/10 text-rose-100';
+  }
+
+  if (status === 'pending') {
+    return 'border-amber-500/30 bg-amber-500/10 text-amber-100';
+  }
+
+  return 'border-border/80 bg-background/40 text-foreground';
 }
 
 type OrderEntryPanelProps = {
@@ -411,120 +439,109 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
   }
 
   return (
-    <div className="order-entry-panel">
-      <div className="order-entry-grid">
-        <label className="order-entry-field">
-          Venue
-          <select
-            className="order-entry-select"
+    <div className="flex h-full flex-col gap-4">
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Venue</label>
+          <Select
             value={draft.venue}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((currentDraft) => ({
                 ...currentDraft,
-                venue: event.target.value as BffVenueId,
+                venue: value as BffVenueId,
               }))
             }
             disabled={isSubmitting}
           >
-            {SUPPORTED_VENUES.map((venue) => (
-              <option key={venue} value={venue}>
-                {getWalletVenueLabel(venue)}
-              </option>
-            ))}
-          </select>
-        </label>
+            <SelectTrigger>
+              <SelectValue placeholder="Select venue" />
+            </SelectTrigger>
+            <SelectContent>
+              {SUPPORTED_VENUES.map((venue) => (
+                <SelectItem key={venue} value={venue}>
+                  {getWalletVenueLabel(venue)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-        <label className="order-entry-field">
-          Instrument
-          <select
-            className="order-entry-select"
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Instrument</label>
+          <Select
             value={draft.instrument}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setDraft((currentDraft) => ({
                 ...currentDraft,
-                instrument: event.target.value,
+                instrument: value,
               }))
             }
             disabled={isSubmitting || venueInstruments.length === 0}
           >
-            {venueInstruments.length > 0 ? (
-              venueInstruments.map((instrument) => (
-                <option key={instrument} value={instrument}>
-                  {instrument}
-                </option>
-              ))
-            ) : (
-              <option value="">No instruments available</option>
-            )}
-          </select>
-        </label>
+            <SelectTrigger>
+              <SelectValue placeholder="Select instrument" />
+            </SelectTrigger>
+            <SelectContent>
+              {venueInstruments.length > 0 ? (
+                venueInstruments.map((instrument) => (
+                  <SelectItem key={instrument} value={instrument}>
+                    {instrument}
+                  </SelectItem>
+                ))
+              ) : (
+                <SelectItem value="__empty" disabled>
+                  No instruments available
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <div className="order-entry-segment-row">
-        <div className="order-entry-segment" role="tablist" aria-label="Order side">
-          <Button
-            type="button"
-            size="sm"
-            className={draft.side === 'buy' ? 'order-entry-segment-active-buy' : ''}
-            variant={draft.side === 'buy' ? 'default' : 'soft'}
-            onClick={() => setDraft((currentDraft) => ({ ...currentDraft, side: 'buy' }))}
-            disabled={isSubmitting}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Side</label>
+          <Tabs
+            value={draft.side}
+            onValueChange={(value) =>
+              setDraft((currentDraft) => ({ ...currentDraft, side: value as 'buy' | 'sell' }))
+            }
           >
-            Buy
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            className={draft.side === 'sell' ? 'order-entry-segment-active-sell' : ''}
-            variant={draft.side === 'sell' ? 'default' : 'soft'}
-            onClick={() => setDraft((currentDraft) => ({ ...currentDraft, side: 'sell' }))}
-            disabled={isSubmitting}
-          >
-            Sell
-          </Button>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="buy">Buy</TabsTrigger>
+              <TabsTrigger value="sell">Sell</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
-        <div className="order-entry-segment" role="tablist" aria-label="Order type">
-          <Button
-            type="button"
-            size="sm"
-            variant={draft.type === 'market' ? 'default' : 'soft'}
-            className={draft.type === 'market' ? 'order-entry-segment-active-type' : ''}
-            onClick={() =>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Order type</label>
+          <Tabs
+            value={draft.type}
+            onValueChange={(value) =>
               setDraft((currentDraft) => ({
                 ...currentDraft,
-                type: 'market',
-              }))
-            }
-            disabled={isSubmitting}
-          >
-            Market
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={draft.type === 'limit' ? 'default' : 'soft'}
-            className={draft.type === 'limit' ? 'order-entry-segment-active-type' : ''}
-            onClick={() =>
-              setDraft((currentDraft) => ({
-                ...currentDraft,
-                type: 'limit',
+                type: value as 'market' | 'limit',
                 limitPrice:
-                  currentDraft.limitPrice.trim().length > 0 || markPrice === undefined
-                    ? currentDraft.limitPrice
-                    : markPrice.toFixed(2),
+                  value === 'limit' &&
+                  currentDraft.limitPrice.trim().length === 0 &&
+                  markPrice !== undefined
+                    ? markPrice.toFixed(2)
+                    : currentDraft.limitPrice,
               }))
             }
-            disabled={isSubmitting}
           >
-            Limit
-          </Button>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="market">Market</TabsTrigger>
+              <TabsTrigger value="limit">Limit</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
       </div>
 
-      <div className="order-entry-grid">
-        <label className="order-entry-field">
-          Size
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Size</label>
           <Input
             value={draft.size}
             onChange={(event) =>
@@ -534,10 +551,10 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
             inputMode="decimal"
             placeholder="0.10"
           />
-        </label>
+        </div>
 
-        <label className="order-entry-field">
-          Leverage (optional)
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Leverage (optional)</label>
           <Input
             value={draft.leverage}
             onChange={(event) =>
@@ -547,12 +564,12 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
             inputMode="decimal"
             placeholder="5"
           />
-        </label>
+        </div>
       </div>
 
       {draft.type === 'limit' ? (
-        <label className="order-entry-field">
-          Limit Price
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Limit price</label>
           <Input
             value={draft.limitPrice}
             onChange={(event) =>
@@ -562,36 +579,40 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
             inputMode="decimal"
             placeholder={markPrice?.toFixed(2) ?? '0.00'}
           />
-        </label>
+        </div>
       ) : null}
 
-      <label className="order-entry-checkbox">
-        <input
-          type="checkbox"
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/70 bg-background/40 px-4 py-3">
+        <Checkbox
+          id="reduce-only"
           checked={draft.reduceOnly}
-          onChange={(event) =>
-            setDraft((currentDraft) => ({ ...currentDraft, reduceOnly: event.target.checked }))
+          onCheckedChange={(checked) =>
+            setDraft((currentDraft) => ({ ...currentDraft, reduceOnly: checked === true }))
           }
           disabled={isSubmitting}
         />
-        <span>Reduce-only</span>
-      </label>
+        <label htmlFor="reduce-only" className="text-sm font-medium text-foreground">
+          Reduce-only
+        </label>
+      </div>
 
-      <div className="order-entry-summary">
-        <div className="order-entry-summary-row">
-          <span>Active Wallet</span>
-          <strong>{activeWalletLabel}</strong>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-xl border border-border/70 bg-background/40 px-4 py-3">
+          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Active wallet</p>
+          <p className="mt-2 text-sm font-medium text-foreground">{activeWalletLabel}</p>
         </div>
-        <div className="order-entry-summary-row">
-          <span>Selected Venue</span>
-          <strong>{getWalletVenueLabel(draft.venue)}</strong>
+        <div className="rounded-xl border border-border/70 bg-background/40 px-4 py-3">
+          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Selected venue</p>
+          <p className="mt-2 text-sm font-medium text-foreground">
+            {getWalletVenueLabel(draft.venue)}
+          </p>
         </div>
       </div>
 
-      <div className="order-entry-actions">
+      <div className="flex flex-wrap gap-2">
         <Button
           type="button"
-          variant="soft"
+          variant="secondary"
           onClick={() => void handlePreviewUnsignedPayload()}
           disabled={!canPreview}
         >
@@ -599,63 +620,84 @@ export function OrderEntryPanel({ marketData, onActionSubmitted }: OrderEntryPan
         </Button>
         <Button type="button" onClick={() => void handleSubmitInWallet()} disabled={!canSubmit}>
           {isSubmitting ? 'Waiting for Wallet...' : 'Submit in Wallet'}
+          {!isSubmitting ? <ArrowRight className="size-4" /> : null}
         </Button>
       </div>
 
       <div
-        className={`order-entry-state order-entry-state-${executionState.status}`}
+        className={cn('rounded-xl border px-4 py-4', getExecutionTone(executionState.status))}
         role="status"
         aria-live="polite"
       >
-        <p className="order-entry-state-title">
-          {executionState.status === 'success' ? 'Ready' : 'Order Entry Status'}
-        </p>
-        <p className="order-entry-state-message">{executionState.message}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold">
+            {executionState.status === 'success' ? 'Ready to submit' : 'Order entry status'}
+          </p>
+          <Badge
+            variant={previewResponse === null ? 'outline' : isPreviewDirty ? 'warning' : 'success'}
+          >
+            {previewResponse === null
+              ? 'Preview missing'
+              : isPreviewDirty
+                ? 'Preview stale'
+                : 'Preview current'}
+          </Badge>
+        </div>
+        <p className="mt-2 text-sm leading-6">{executionState.message}</p>
         {latestSubmission ? (
-          <p className="order-entry-state-message">
+          <p className="mt-2 text-sm leading-6">
             Last submission: order {latestSubmission.orderId} / hash {latestSubmission.actionHash}
             {latestSubmission.venueOrderId ? ` / venue order ${latestSubmission.venueOrderId}` : ''}
             .
           </p>
         ) : null}
         {previewBlockingMessage ? (
-          <p className="order-entry-blocking-message">{previewBlockingMessage}</p>
+          <p className="mt-2 text-sm leading-6">{previewBlockingMessage}</p>
         ) : null}
       </div>
 
-      <div className="order-entry-preview">
-        <div className="order-entry-preview-header">
-          <p>Unsigned Action Payload</p>
-          <span
-            className={
-              isPreviewDirty ? 'order-entry-preview-pill stale' : 'order-entry-preview-pill'
-            }
+      <div className="rounded-xl border border-border/70 bg-background/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-foreground">Unsigned action payload</p>
+            <p className="text-sm text-muted-foreground">
+              Inspect the venue-ready payload before handing it to the wallet runtime.
+            </p>
+          </div>
+          <Badge
+            variant={previewResponse === null ? 'outline' : isPreviewDirty ? 'warning' : 'success'}
           >
             {previewResponse === null ? 'Missing' : isPreviewDirty ? 'Stale' : 'Current'}
-          </span>
+          </Badge>
         </div>
 
         {previewResponse ? (
           <>
-            <div className="order-entry-preview-meta">
-              <span>Order ID: {previewResponse.orderId}</span>
-              <span>Policy: {previewResponse.signingPolicy}</span>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Badge variant="outline">Order ID: {previewResponse.orderId}</Badge>
+              <Badge variant="outline">Policy: {previewResponse.signingPolicy}</Badge>
             </div>
-            <p className="order-entry-preview-disclaimer">{previewResponse.disclaimer}</p>
-            <pre className="order-entry-json">
-              {toJsonPreview(previewResponse.unsignedActionPayload)}
-            </pre>
+            <p className="mt-3 text-sm text-muted-foreground">{previewResponse.disclaimer}</p>
+            <ScrollArea className="mt-4 h-[240px] rounded-lg border border-border/70 bg-card/90">
+              <pre className="p-4 text-xs leading-6 text-muted-foreground">
+                {toJsonPreview(previewResponse.unsignedActionPayload)}
+              </pre>
+            </ScrollArea>
           </>
         ) : (
-          <p className="order-entry-preview-empty">
+          <p className="mt-4 text-sm text-muted-foreground">
             Build a preview to inspect the unsigned action payload before signing.
           </p>
         )}
       </div>
 
-      <div className="order-entry-guardrails">
-        <p className="order-entry-guardrails-title">Signing Guardrails</p>
-        <ul className="order-entry-guardrails-list">
+      <div className="rounded-xl border border-border/70 bg-background/40 p-4">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="size-4 text-muted-foreground" />
+          <p className="text-sm font-medium text-foreground">Signing guardrails</p>
+        </div>
+        <Separator className="my-4" />
+        <ul className="space-y-2 text-sm text-muted-foreground">
           {SIGNING_ONLY_DISCLAIMER_LINES.map((line) => (
             <li key={line}>{line}</li>
           ))}

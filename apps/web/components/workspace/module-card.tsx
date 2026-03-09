@@ -1,4 +1,7 @@
 import type { DragEvent, PointerEvent } from 'react';
+import { GripVertical, X } from 'lucide-react';
+
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ModuleContent } from '@/components/workspace/module-content';
@@ -35,14 +38,21 @@ export function WorkspaceModuleCard({
   onDropOnModule,
   onDragEnd,
 }: WorkspaceModuleCardProps) {
+  const sizeClassName =
+    module.size === 'full'
+      ? 'xl:col-span-12'
+      : module.size === 'wide'
+        ? 'xl:col-span-8'
+        : 'xl:col-span-4';
+
   return (
     <Card
       data-testid="module-card"
       className={cn(
-        'module-card',
-        `module-${module.size}`,
-        draggingId === module.id && 'is-dragging',
-        dropTargetId === module.id && 'is-drop-target',
+        'col-span-1 flex min-h-[280px] flex-col overflow-hidden border-border/80 bg-card/90 transition-all duration-150 xl:col-span-12',
+        sizeClassName,
+        draggingId === module.id && 'scale-[0.99] opacity-55',
+        dropTargetId === module.id && 'border-primary/60 ring-1 ring-primary/40',
       )}
       draggable
       onDragStart={(event) => onDragStart(module.id, event)}
@@ -53,25 +63,41 @@ export function WorkspaceModuleCard({
       onDrop={(event) => onDropOnModule(module.id, event)}
       onDragEnd={onDragEnd}
     >
-      <CardHeader className="module-header">
-        <p>
-          <span className="drag-handle" aria-hidden="true">
-            &#8942;&#8942;
+      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border/70 bg-background/35 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="flex size-8 items-center justify-center rounded-md border border-border/70 bg-background/80 text-muted-foreground"
+            aria-hidden="true"
+          >
+            <GripVertical className="size-4" />
           </span>
-          <span data-testid="module-title">{module.label}</span>
-        </p>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="module-remove"
-          onClick={() => onRemove(module.id)}
-          aria-label={`Remove ${module.label}`}
-        >
-          &#10005;
-        </Button>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-foreground" data-testid="module-title">
+              {module.label}
+            </p>
+            <p className="text-xs text-muted-foreground">Draggable workspace block</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant="outline"
+            className="hidden border-border/70 bg-background/50 uppercase sm:inline-flex"
+          >
+            {module.size}
+          </Badge>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => onRemove(module.id)}
+            aria-label={`Remove ${module.label}`}
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent className="module-body">
+      <CardContent className="flex min-h-0 flex-1 flex-col p-4">
         <ModuleContent module={module} marketData={marketData} />
       </CardContent>
     </Card>
