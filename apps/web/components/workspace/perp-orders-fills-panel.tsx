@@ -39,6 +39,7 @@ function formatPrice(value: string): string {
 type ActivityRow =
   | {
       id: string;
+      rowKey: string;
       timestamp: string;
       type: 'Order';
       instrument: string;
@@ -51,6 +52,7 @@ type ActivityRow =
     }
   | {
       id: string;
+      rowKey: string;
       timestamp: string;
       type: 'Fill';
       instrument: string;
@@ -65,6 +67,7 @@ type ActivityRow =
 function toOrderRow(action: TrackedPerpAction): ActivityRow {
   return {
     id: action.id,
+    rowKey: `order:${action.id}`,
     timestamp: action.updatedAt,
     type: 'Order',
     instrument: action.instrument,
@@ -80,6 +83,7 @@ function toOrderRow(action: TrackedPerpAction): ActivityRow {
 function toFillRow(fill: PerpFill): ActivityRow {
   return {
     id: fill.id,
+    rowKey: `fill:${fill.venue}:${fill.accountId}:${fill.id}:${fill.orderId}:${fill.filledAt}`,
     timestamp: fill.filledAt,
     type: 'Fill',
     instrument: fill.instrument,
@@ -157,8 +161,16 @@ export function PerpOrdersFillsPanel() {
 
   const rows = useMemo(() => {
     const nextRows = [...actions.map(toOrderRow), ...fills.map(toFillRow)];
-    nextRows.sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
-    return nextRows.slice(0, 24);
+    const seenRowKeys = new Set<string>();
+    const dedupedRows = nextRows.filter((row) => {
+      if (seenRowKeys.has(row.rowKey)) {
+        return false;
+      }
+      seenRowKeys.add(row.rowKey);
+      return true;
+    });
+    dedupedRows.sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+    return dedupedRows.slice(0, 24);
   }, [actions, fills]);
 
   return (
@@ -188,7 +200,7 @@ export function PerpOrdersFillsPanel() {
         {rows.length > 0 ? (
           <div className="perp-activity-table-body">
             {rows.map((row) => (
-              <div className="perp-activity-table-row" key={row.id}>
+              <div className="perp-activity-table-row" key={row.rowKey}>
                 <span>{formatTimestamp(row.timestamp)}</span>
                 <span>{row.type}</span>
                 <span>{row.instrument}</span>
