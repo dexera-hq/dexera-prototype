@@ -1,6 +1,10 @@
 package http
 
-import "testing"
+import (
+	"testing"
+
+	hyperliquid "github.com/sonirico/go-hyperliquid"
+)
 
 func TestExtractHyperliquidSubmissionDebugReason(t *testing.T) {
 	t.Run("returns nil for successful submission", func(t *testing.T) {
@@ -148,6 +152,60 @@ func TestNormalizeHyperliquidPerpPriceWire(t *testing.T) {
 		_, err := normalizeHyperliquidPerpPriceWire(0, 4)
 		if err == nil {
 			t.Fatal("expected error for zero price")
+		}
+	})
+}
+
+func TestMapHyperliquidFill(t *testing.T) {
+	t.Run("maps buy fill fields into perp fill response shape", func(t *testing.T) {
+		fill := mapHyperliquidFill("0xabc123", hyperliquid.Fill{
+			Coin:     "ETH",
+			Side:     "B",
+			Price:    "4307.4",
+			Size:     "0.0025",
+			Time:     1755857898644,
+			Hash:     "0xhash",
+			Oid:      37907159219,
+			Fee:      "0.004845",
+			FeeToken: "USDC",
+			Tid:      1070455675927460,
+		})
+
+		if fill == nil {
+			t.Fatal("expected non-nil fill")
+		}
+		if fill.Instrument != "ETH-PERP" {
+			t.Fatalf("expected ETH-PERP, got %s", fill.Instrument)
+		}
+		if fill.Side != "buy" {
+			t.Fatalf("expected buy, got %s", fill.Side)
+		}
+		if fill.OrderID != "37907159219" {
+			t.Fatalf("expected order id from oid, got %s", fill.OrderID)
+		}
+		if fill.FeeAmount != "0.004845" {
+			t.Fatalf("expected fee amount, got %s", fill.FeeAmount)
+		}
+		if fill.FeeAsset != "USDC" {
+			t.Fatalf("expected fee asset, got %s", fill.FeeAsset)
+		}
+	})
+
+	t.Run("falls back to direction when side shorthand is missing", func(t *testing.T) {
+		fill := mapHyperliquidFill("0xabc123", hyperliquid.Fill{
+			Coin:  "BTC",
+			Dir:   "Close Long",
+			Price: "68450.25",
+			Size:  "0.01",
+			Time:  1755857898644,
+			Oid:   12345,
+		})
+
+		if fill == nil {
+			t.Fatal("expected non-nil fill")
+		}
+		if fill.Side != "sell" {
+			t.Fatalf("expected sell, got %s", fill.Side)
 		}
 	})
 }
