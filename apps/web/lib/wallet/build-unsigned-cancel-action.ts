@@ -55,6 +55,12 @@ export async function buildUnsignedCancelAction(
   }
 
   assertUnsignedActionPayload(payload.unsignedActionPayload);
+  if (payload.unsignedActionPayload.kind !== 'perp_cancel_action') {
+    throw new TransactionGuardrailError(
+      'invalid-payload',
+      'Unsigned cancel action response must include a perp_cancel_action payload.',
+    );
+  }
 
   if (typeof payload.orderId !== 'string' || payload.orderId.trim().length === 0) {
     throw new TransactionGuardrailError(

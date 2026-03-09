@@ -533,6 +533,33 @@ func TestBuildUnsignedCancelActionRejectsUnsupportedVenue(t *testing.T) {
 	}
 }
 
+func TestBuildUnsignedCancelActionRejectsInvalidVenueOrderID(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/cancels/unsigned",
+		bytes.NewBufferString(`{
+			"cancel": {
+				"accountId": "acct_001",
+				"venue": "hyperliquid",
+				"instrument": "BTC-PERP",
+				"orderId": "ord_hl_001",
+				"venueOrderId": "abc"
+			}
+		}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "venueOrderId must be a positive integer") {
+		t.Fatalf("expected venueOrderId validation error, got body=%s", rr.Body.String())
+	}
+}
+
 func TestPerpPositionsHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/perp/positions?accountId=acct_001&venue=aster", nil)
 	rr := httptest.NewRecorder()

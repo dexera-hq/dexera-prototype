@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -874,8 +875,12 @@ func validateBuildUnsignedCancelActionRequest(request buildUnsignedCancelActionR
 	if strings.TrimSpace(cancel.OrderID) == "" {
 		return errors.New("orderId is required")
 	}
-	if strings.TrimSpace(cancel.VenueOrderID) == "" {
+	venueOrderID := strings.TrimSpace(cancel.VenueOrderID)
+	if venueOrderID == "" {
 		return errors.New("venueOrderId is required")
+	}
+	if parsedVenueOrderID, err := strconv.ParseInt(venueOrderID, 10, 64); err != nil || parsedVenueOrderID <= 0 {
+		return errors.New("venueOrderId must be a positive integer")
 	}
 
 	return nil
