@@ -1,8 +1,8 @@
 // AUTO-GENERATED FILE. DO NOT EDIT.
 // Source: contracts/openapi/bff.openapi.yaml
 
-export type BffPublicPath = '/health' | '/api/v1/placeholder' | '/api/v1/wallet/challenge' | '/api/v1/wallet/verify' | '/api/v1/perp/orders/preview' | '/api/v1/perp/actions/unsigned' | '/api/v1/perp/actions/submit' | '/api/v1/perp/positions' | '/api/v1/perp/fills' | '/api/v1/perp/orders/status';
-export declare const BFF_PUBLIC_PATHS: readonly ["/health","/api/v1/placeholder","/api/v1/wallet/challenge","/api/v1/wallet/verify","/api/v1/perp/orders/preview","/api/v1/perp/actions/unsigned","/api/v1/perp/actions/submit","/api/v1/perp/positions","/api/v1/perp/fills","/api/v1/perp/orders/status"];
+export type BffPublicPath = '/health' | '/api/v1/placeholder' | '/api/v1/wallet/challenge' | '/api/v1/wallet/verify' | '/api/v1/perp/orders/preview' | '/api/v1/perp/actions/unsigned' | '/api/v1/perp/cancels/unsigned' | '/api/v1/perp/actions/submit' | '/api/v1/perp/positions' | '/api/v1/perp/fills' | '/api/v1/perp/orders/status';
+export declare const BFF_PUBLIC_PATHS: readonly ["/health","/api/v1/placeholder","/api/v1/wallet/challenge","/api/v1/wallet/verify","/api/v1/perp/orders/preview","/api/v1/perp/actions/unsigned","/api/v1/perp/cancels/unsigned","/api/v1/perp/actions/submit","/api/v1/perp/positions","/api/v1/perp/fills","/api/v1/perp/orders/status"];
 
 export type BffVenueId = 'hyperliquid' | 'aster';
 export type BffPerpOrderSide = 'buy' | 'sell';
@@ -65,6 +65,18 @@ export interface BffBuildUnsignedActionRequest {
   order: BffPerpOrderRequest;
 }
 
+export interface BffPerpCancelRequest {
+  accountId: string;
+  venue: BffVenueId;
+  instrument: string;
+  orderId: string;
+  venueOrderId: string;
+}
+
+export interface BffBuildUnsignedCancelActionRequest {
+  cancel: BffPerpCancelRequest;
+}
+
 export interface BffPerpOrderPreviewResponse {
   previewId: string;
   accountId: string;
@@ -85,7 +97,7 @@ export interface BffUnsignedActionPayload {
   id: string;
   accountId: string;
   venue: BffVenueId;
-  kind: 'perp_order_action';
+  kind: 'perp_order_action' | 'perp_cancel_action';
   action: Record<string, unknown>;
   walletRequest: BffWalletRequestEnvelope;
 }

@@ -156,6 +156,31 @@ func TestNormalizeHyperliquidPerpPriceWire(t *testing.T) {
 	})
 }
 
+func TestNormalizeActionForSigningHash(t *testing.T) {
+	t.Run("canonicalizes cancel actions", func(t *testing.T) {
+		normalized := normalizeActionForSigningHash(map[string]any{
+			"type": "cancel",
+			"cancels": []any{
+				map[string]any{
+					"a": 0,
+					"o": 12345,
+				},
+			},
+		})
+
+		cancelAction, ok := normalized.(hyperliquid.CancelAction)
+		if !ok {
+			t.Fatalf("expected hyperliquid.CancelAction, got %T", normalized)
+		}
+		if cancelAction.Type != "cancel" {
+			t.Fatalf("expected cancel type, got %s", cancelAction.Type)
+		}
+		if len(cancelAction.Cancels) != 1 || cancelAction.Cancels[0].OrderID != 12345 {
+			t.Fatalf("expected cancel order id 12345, got %+v", cancelAction.Cancels)
+		}
+	})
+}
+
 func TestMapHyperliquidFill(t *testing.T) {
 	t.Run("maps buy fill fields into perp fill response shape", func(t *testing.T) {
 		fill := mapHyperliquidFill("0xabc123", hyperliquid.Fill{

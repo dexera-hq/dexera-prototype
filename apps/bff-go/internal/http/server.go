@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -163,6 +164,18 @@ type buildUnsignedActionRequest struct {
 	Order perpOrderRequest `json:"order"`
 }
 
+type perpCancelRequest struct {
+	AccountID    string  `json:"accountId"`
+	Venue        venueID `json:"venue"`
+	Instrument   string  `json:"instrument"`
+	OrderID      string  `json:"orderId"`
+	VenueOrderID string  `json:"venueOrderId"`
+}
+
+type buildUnsignedCancelActionRequest struct {
+	Cancel perpCancelRequest `json:"cancel"`
+}
+
 type perpOrderPreviewResponse struct {
 	PreviewID         string  `json:"previewId"`
 	AccountID         string  `json:"accountId"`
@@ -294,6 +307,10 @@ type perpOrderStatusQuery struct {
 type perpVenueAdapter interface {
 	PreviewOrder(r *http.Request, req buildUnsignedActionRequest) (perpOrderPreviewResponse, error)
 	BuildUnsignedAction(r *http.Request, req buildUnsignedActionRequest) (buildUnsignedActionResponse, error)
+	BuildUnsignedCancelAction(
+		r *http.Request,
+		req buildUnsignedCancelActionRequest,
+	) (buildUnsignedActionResponse, error)
 	SubmitSignedAction(
 		r *http.Request,
 		req submitSignedActionRequest,
@@ -306,6 +323,7 @@ type perpVenueAdapter interface {
 
 var errAdapterNotConfigured = errors.New("venue adapter is not configured")
 var errSignedSubmitNotSupported = errors.New("signed action submission is not supported for this venue")
+var errUnsignedCancelNotSupported = errors.New("unsigned cancel action is not supported for this venue")
 var venueAdapterResolver = resolvePerpVenueAdapter
 var walletChallenges = newWalletChallengeStore(time.Now)
 
@@ -317,6 +335,7 @@ func NewMux() *http.ServeMux {
 	mux.HandleFunc("/api/v1/wallet/verify", walletVerifyHandler)
 	mux.HandleFunc("/api/v1/perp/orders/preview", perpOrderPreviewHandler)
 	mux.HandleFunc("/api/v1/perp/actions/unsigned", buildUnsignedActionHandler)
+	mux.HandleFunc("/api/v1/perp/cancels/unsigned", buildUnsignedCancelActionHandler)
 	mux.HandleFunc("/api/v1/perp/actions/submit", submitSignedActionHandler)
 	mux.HandleFunc("/api/v1/perp/positions", perpPositionsHandler)
 	mux.HandleFunc("/api/v1/perp/fills", perpFillsHandler)
@@ -523,6 +542,43 @@ func buildUnsignedActionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response, err := adapter.BuildUnsignedAction(r, req)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+func buildUnsignedCancelActionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req buildUnsignedCancelActionRequest
+	if err := decodeStrictJSONBody(r, &req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if err := validateBuildUnsignedCancelActionRequest(req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	venue, err := parseVenue(string(req.Cancel.Venue))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.Cancel.Venue = venue
+
+	adapter, err := venueAdapterResolver(req.Cancel.Venue)
+	if err != nil {
+		handleAdapterError(w, err)
+		return
+	}
+
+	response, err := adapter.BuildUnsignedCancelAction(r, req)
 	if err != nil {
 		handleAdapterError(w, err)
 		return
@@ -804,6 +860,32 @@ func validateBuildUnsignedActionRequest(request buildUnsignedActionRequest) erro
 	return nil
 }
 
+func validateBuildUnsignedCancelActionRequest(request buildUnsignedCancelActionRequest) error {
+	cancel := request.Cancel
+
+	if strings.TrimSpace(cancel.AccountID) == "" {
+		return errors.New("accountId is required")
+	}
+	if _, err := parseVenue(string(cancel.Venue)); err != nil {
+		return err
+	}
+	if strings.TrimSpace(cancel.Instrument) == "" {
+		return errors.New("instrument is required")
+	}
+	if strings.TrimSpace(cancel.OrderID) == "" {
+		return errors.New("orderId is required")
+	}
+	venueOrderID := strings.TrimSpace(cancel.VenueOrderID)
+	if venueOrderID == "" {
+		return errors.New("venueOrderId is required")
+	}
+	if parsedVenueOrderID, err := strconv.ParseInt(venueOrderID, 10, 64); err != nil || parsedVenueOrderID <= 0 {
+		return errors.New("venueOrderId must be a positive integer")
+	}
+
+	return nil
+}
+
 func validateSubmitSignedActionRequest(request submitSignedActionRequest) error {
 	if strings.TrimSpace(request.OrderID) == "" {
 		return errors.New("orderId is required")
@@ -822,8 +904,11 @@ func validateSubmitSignedActionRequest(request submitSignedActionRequest) error 
 	if _, err := parseVenue(string(payload.Venue)); err != nil {
 		return err
 	}
-	if strings.TrimSpace(payload.Kind) != "perp_order_action" {
-		return errors.New("unsignedActionPayload.kind must be perp_order_action")
+	switch strings.TrimSpace(payload.Kind) {
+	case "perp_order_action", "perp_cancel_action":
+		// supported perp action kinds
+	default:
+		return errors.New("unsignedActionPayload.kind must be perp_order_action or perp_cancel_action")
 	}
 	if len(payload.Action) == 0 {
 		return errors.New("unsignedActionPayload.action is required")
@@ -874,7 +959,7 @@ func handleAdapterError(w http.ResponseWriter, err error) {
 		http.Error(w, "venue integration is not configured", http.StatusInternalServerError)
 		return
 	}
-	if errors.Is(err, errSignedSubmitNotSupported) {
+	if errors.Is(err, errSignedSubmitNotSupported) || errors.Is(err, errUnsignedCancelNotSupported) {
 		http.Error(w, err.Error(), http.StatusNotImplemented)
 		return
 	}

@@ -249,6 +249,69 @@ func (a *hyperliquidAdapter) BuildUnsignedAction(
 		Orders:   []hyperliquid.OrderWire{orderWireCanonical},
 		Grouping: string(hyperliquid.GroupingNA),
 	}
+	orderID := strings.TrimSpace(req.Order.ClientOrderID)
+	if orderID == "" {
+		orderID = fmt.Sprintf("ord_hl_%d", time.Now().UTC().UnixNano())
+	}
+
+	return a.buildUnsignedHyperliquidActionResponse(
+		req.Order.AccountID,
+		req.Order.Venue,
+		orderID,
+		"perp_order_action",
+		actionCanonical,
+	)
+}
+
+func (a *hyperliquidAdapter) BuildUnsignedCancelAction(
+	r *http.Request,
+	req buildUnsignedCancelActionRequest,
+) (buildUnsignedActionResponse, error) {
+	coin := normalizePerpCoinFromInstrument(req.Cancel.Instrument)
+	if coin == "" {
+		return buildUnsignedActionResponse{}, errors.New("instrument is required")
+	}
+
+	venueOrderID, err := strconv.ParseInt(strings.TrimSpace(req.Cancel.VenueOrderID), 10, 64)
+	if err != nil || venueOrderID <= 0 {
+		return buildUnsignedActionResponse{}, errors.New("venueOrderId must be a positive integer")
+	}
+
+	metaPayload, err := a.infoClient.Meta(r.Context())
+	if err != nil {
+		return buildUnsignedActionResponse{}, err
+	}
+	asset, err := resolvePerpAssetFromSDK(metaPayload, coin)
+	if err != nil {
+		return buildUnsignedActionResponse{}, err
+	}
+
+	actionCanonical := hyperliquid.CancelAction{
+		Type: "cancel",
+		Cancels: []hyperliquid.CancelOrderWire{
+			{
+				Asset:   asset,
+				OrderID: venueOrderID,
+			},
+		},
+	}
+
+	return a.buildUnsignedHyperliquidActionResponse(
+		req.Cancel.AccountID,
+		req.Cancel.Venue,
+		req.Cancel.OrderID,
+		"perp_cancel_action",
+		actionCanonical,
+	)
+}
+
+func (a *hyperliquidAdapter) buildUnsignedHyperliquidActionResponse(
+	accountID string,
+	venue venueID,
+	orderID string,
+	kind string,
+	actionCanonical any,
+) (buildUnsignedActionResponse, error) {
 	action, err := marshalActionToMap(actionCanonical)
 	if err != nil {
 		return buildUnsignedActionResponse{}, err
@@ -266,10 +329,6 @@ func (a *hyperliquidAdapter) BuildUnsignedAction(
 	if err != nil {
 		return buildUnsignedActionResponse{}, err
 	}
-	orderID := strings.TrimSpace(req.Order.ClientOrderID)
-	if orderID == "" {
-		orderID = fmt.Sprintf("ord_hl_%d", time.Now().UTC().UnixNano())
-	}
 	payloadID := fmt.Sprintf("uap_hl_%d", time.Now().UTC().UnixNano())
 
 	return buildUnsignedActionResponse{
@@ -278,13 +337,13 @@ func (a *hyperliquidAdapter) BuildUnsignedAction(
 		Disclaimer:    clientSigningOnlyDisclaimer,
 		UnsignedActionPayload: unsignedActionPayload{
 			ID:        payloadID,
-			AccountID: req.Order.AccountID,
-			Venue:     req.Order.Venue,
-			Kind:      "perp_order_action",
+			AccountID: accountID,
+			Venue:     venue,
+			Kind:      kind,
 			Action:    unsignedExchangeRequest,
 			WalletRequest: walletRequestPayload{
 				Method: "eth_signTypedData_v4",
-				Params: []any{req.Order.AccountID, typedDataJSON},
+				Params: []any{accountID, typedDataJSON},
 			},
 		},
 	}, nil
@@ -591,6 +650,13 @@ func (a *asterMockAdapter) BuildUnsignedAction(
 			},
 		},
 	}, nil
+}
+
+func (a *asterMockAdapter) BuildUnsignedCancelAction(
+	_ *http.Request,
+	_ buildUnsignedCancelActionRequest,
+) (buildUnsignedActionResponse, error) {
+	return buildUnsignedActionResponse{}, errUnsignedCancelNotSupported
 }
 
 func (a *asterMockAdapter) SubmitSignedAction(
@@ -1318,6 +1384,16 @@ func normalizeActionForSigningHash(action any) any {
 			return action
 		}
 		var canonical hyperliquid.OrderAction
+		if unmarshalErr := json.Unmarshal(payloadBytes, &canonical); unmarshalErr != nil {
+			return action
+		}
+		return canonical
+	case "cancel":
+		payloadBytes, err := json.Marshal(actionRecord)
+		if err != nil {
+			return action
+		}
+		var canonical hyperliquid.CancelAction
 		if unmarshalErr := json.Unmarshal(payloadBytes, &canonical); unmarshalErr != nil {
 			return action
 		}

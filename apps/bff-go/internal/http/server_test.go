@@ -16,6 +16,8 @@ type fakeVenueAdapter struct {
 	previewError     error
 	unsignedResponse buildUnsignedActionResponse
 	unsignedError    error
+	cancelResponse   buildUnsignedActionResponse
+	cancelError      error
 	submitResponse   submitSignedActionResponse
 	submitError      error
 	positionsResp    perpPositionsResponse
@@ -34,6 +36,13 @@ func (a fakeVenueAdapter) PreviewOrder(_ *http.Request, _ buildUnsignedActionReq
 
 func (a fakeVenueAdapter) BuildUnsignedAction(_ *http.Request, _ buildUnsignedActionRequest) (buildUnsignedActionResponse, error) {
 	return a.unsignedResponse, a.unsignedError
+}
+
+func (a fakeVenueAdapter) BuildUnsignedCancelAction(
+	_ *http.Request,
+	_ buildUnsignedCancelActionRequest,
+) (buildUnsignedActionResponse, error) {
+	return a.cancelResponse, a.cancelError
 }
 
 func (a fakeVenueAdapter) SubmitSignedAction(_ *http.Request, _ submitSignedActionRequest) (submitSignedActionResponse, error) {
@@ -69,6 +78,18 @@ func validBuildUnsignedActionBody(venue string) *bytes.Buffer {
 			"type": "limit",
 			"size": "0.15",
 			"limitPrice": "68500"
+		}
+	}`)
+}
+
+func validBuildUnsignedCancelActionBody(venue string) *bytes.Buffer {
+	return bytes.NewBufferString(`{
+		"cancel": {
+			"accountId": "acct_001",
+			"venue": "` + venue + `",
+			"instrument": "BTC-PERP",
+			"orderId": "ord_hl_001",
+			"venueOrderId": "918273645"
 		}
 	}`)
 }
@@ -430,6 +451,112 @@ func TestBuildUnsignedActionNormalizesVenueForAdapterResolution(t *testing.T) {
 	}
 	if walletRequest["method"] == "" {
 		t.Fatalf("expected walletRequest method to be non-empty")
+	}
+}
+
+func TestBuildUnsignedCancelActionHyperliquid(t *testing.T) {
+	previousResolver := venueAdapterResolver
+	venueAdapterResolver = func(venue venueID) (perpVenueAdapter, error) {
+		if venue != venueHyperliquid {
+			t.Fatalf("expected venueHyperliquid, got %s", venue)
+		}
+		return fakeVenueAdapter{
+			cancelResponse: buildUnsignedActionResponse{
+				OrderID:       "ord_hl_001",
+				SigningPolicy: "client-signing-only",
+				Disclaimer:    clientSigningOnlyDisclaimer,
+				UnsignedActionPayload: unsignedActionPayload{
+					ID:        "uap_hl_cancel_001",
+					AccountID: "acct_001",
+					Venue:     venueHyperliquid,
+					Kind:      "perp_cancel_action",
+					Action: map[string]any{
+						"action": map[string]any{
+							"type": "cancel",
+						},
+						"nonce": 1733000000000,
+					},
+					WalletRequest: walletRequestPayload{
+						Method: "eth_signTypedData_v4",
+					},
+				},
+			},
+		}, nil
+	}
+	defer func() {
+		venueAdapterResolver = previousResolver
+	}()
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/cancels/unsigned",
+		validBuildUnsignedCancelActionBody("hyperliquid"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("expected valid JSON body: %v", err)
+	}
+	unsignedPayload, ok := body["unsignedActionPayload"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected unsignedActionPayload object, got %T", body["unsignedActionPayload"])
+	}
+	if unsignedPayload["kind"] != "perp_cancel_action" {
+		t.Fatalf("expected kind=perp_cancel_action, got %v", unsignedPayload["kind"])
+	}
+}
+
+func TestBuildUnsignedCancelActionRejectsUnsupportedVenue(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/cancels/unsigned",
+		validBuildUnsignedCancelActionBody("aster"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotImplemented {
+		t.Fatalf("expected status 501, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "unsigned cancel action is not supported") {
+		t.Fatalf("expected unsupported cancel error, got body=%s", rr.Body.String())
+	}
+}
+
+func TestBuildUnsignedCancelActionRejectsInvalidVenueOrderID(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/perp/cancels/unsigned",
+		bytes.NewBufferString(`{
+			"cancel": {
+				"accountId": "acct_001",
+				"venue": "hyperliquid",
+				"instrument": "BTC-PERP",
+				"orderId": "ord_hl_001",
+				"venueOrderId": "abc"
+			}
+		}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	NewMux().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "venueOrderId must be a positive integer") {
+		t.Fatalf("expected venueOrderId validation error, got body=%s", rr.Body.String())
 	}
 }
 

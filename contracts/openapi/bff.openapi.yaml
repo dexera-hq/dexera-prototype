@@ -108,6 +108,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BuildUnsignedActionResponse'
+  /api/v1/perp/cancels/unsigned:
+    post:
+      summary: Build an unsigned perpetual cancel action for client-side wallet submission
+      operationId: postBuildUnsignedPerpCancelAction
+      tags:
+        - trading
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildUnsignedCancelActionRequest'
+      responses:
+        '200':
+          description: Unsigned perp cancel action payload response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildUnsignedActionResponse'
   /api/v1/perp/actions/submit:
     post:
       summary: Submit a signed perpetual action to the selected venue
@@ -374,6 +393,34 @@ components:
       properties:
         order:
           $ref: '#/components/schemas/PerpOrderRequest'
+    PerpCancelRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - accountId
+        - venue
+        - instrument
+        - orderId
+        - venueOrderId
+      properties:
+        accountId:
+          type: string
+        venue:
+          $ref: '#/components/schemas/VenueId'
+        instrument:
+          type: string
+        orderId:
+          type: string
+        venueOrderId:
+          type: string
+    BuildUnsignedCancelActionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - cancel
+      properties:
+        cancel:
+          $ref: '#/components/schemas/PerpCancelRequest'
     PerpOrderPreviewResponse:
       type: object
       additionalProperties: false
@@ -438,7 +485,7 @@ components:
           $ref: '#/components/schemas/VenueId'
         kind:
           type: string
-          enum: [perp_order_action]
+          enum: [perp_order_action, perp_cancel_action]
         action:
           type: object
           additionalProperties: true

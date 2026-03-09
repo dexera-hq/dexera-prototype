@@ -1,11 +1,16 @@
 'use client';
 
 import type { PerpFill } from '@/lib/market-data/types';
+import { buildUnsignedCancelAction } from '@/lib/wallet/build-unsigned-cancel-action';
 import { useEffect, useMemo, useState } from 'react';
 import { getPerpFills } from '@/lib/market-data/get-perp-fills';
 import { getWalletVenueLabel } from '@/lib/wallet/chains';
+import { signRuntimeSlotActionPayload } from '@/lib/wallet/multi-session-runtime';
+import { submitSignedAction } from '@/lib/wallet/submit-signed-action';
+import { TransactionGuardrailError } from '@/lib/wallet/transaction-guardrails';
 import {
   formatTrackedPerpActionStatusLabel,
+  resolveTrackedPerpActionCancelState,
   type TrackedPerpAction,
   useSubmittedPerpActionsTracker,
 } from '@/lib/wallet/use-submitted-perp-actions';
@@ -49,6 +54,8 @@ type ActivityRow =
       statusClassName: string;
       venueLabel: string;
       details: string;
+      cancelState: 'available' | 'pending' | 'unsupported';
+      action?: TrackedPerpAction;
     }
   | {
       id: string;
@@ -62,6 +69,7 @@ type ActivityRow =
       statusClassName: string;
       venueLabel: string;
       details: string;
+      cancelState: 'unsupported';
     };
 
 function toOrderRow(action: TrackedPerpAction): ActivityRow {
@@ -77,6 +85,8 @@ function toOrderRow(action: TrackedPerpAction): ActivityRow {
     statusClassName: `status-${action.status}`,
     venueLabel: getWalletVenueLabel(action.venue),
     details: action.orderId ? `order ${action.orderId}` : 'order pending',
+    cancelState: resolveTrackedPerpActionCancelState(action),
+    action,
   };
 }
 
@@ -93,15 +103,22 @@ function toFillRow(fill: PerpFill): ActivityRow {
     statusClassName: 'status-filled',
     venueLabel: getWalletVenueLabel(fill.venue),
     details: `${formatPrice(fill.price)} · order ${fill.orderId}`,
+    cancelState: 'unsupported',
   };
 }
 
 export function PerpOrdersFillsPanel() {
   const { activeSlot } = useWalletManager();
-  const { actions } = useSubmittedPerpActionsTracker();
+  const {
+    actions,
+    markActionCancelFailed,
+    markActionCancelStarted,
+    markActionCancelSubmitted,
+  } = useSubmittedPerpActionsTracker();
   const [fills, setFills] = useState<PerpFill[]>([]);
   const [fillsLoading, setFillsLoading] = useState(false);
   const [fillsError, setFillsError] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeSlot) {
@@ -173,6 +190,80 @@ export function PerpOrdersFillsPanel() {
     return dedupedRows.slice(0, 24);
   }, [actions, fills]);
 
+  async function handleCancelAction(action: TrackedPerpAction) {
+    if (!activeSlot || activeSlot.venue !== 'hyperliquid' || activeSlot.id.length === 0) {
+      setCancelError('Connect the Hyperliquid wallet for this order before cancelling.');
+      return;
+    }
+    if (
+      activeSlot.accountId.trim().toLowerCase() !== action.accountId.trim().toLowerCase() ||
+      !action.orderId ||
+      !action.venueOrderId
+    ) {
+      setCancelError('This order cannot be cancelled from the current wallet session.');
+      return;
+    }
+
+    setCancelError(null);
+    markActionCancelStarted({
+      actionId: action.id,
+      accountId: action.accountId,
+      venue: action.venue,
+    });
+
+    try {
+      const unsignedCancelAction = await buildUnsignedCancelAction({
+        cancel: {
+          accountId: action.accountId,
+          venue: action.venue,
+          instrument: action.instrument,
+          orderId: action.orderId,
+          venueOrderId: action.venueOrderId,
+        },
+      });
+      const signature = await signRuntimeSlotActionPayload({
+        slotId: activeSlot.id,
+        accountId: activeSlot.accountId,
+        payload: unsignedCancelAction.unsignedActionPayload,
+      });
+      const venueSubmission = await submitSignedAction({
+        orderId: unsignedCancelAction.orderId,
+        signature,
+        unsignedActionPayload: unsignedCancelAction.unsignedActionPayload,
+      });
+
+      if (venueSubmission.status.trim().toLowerCase() !== 'submitted') {
+        const debugReason =
+          typeof venueSubmission.debugReason === 'string' && venueSubmission.debugReason.trim().length
+            ? ` ${venueSubmission.debugReason}`
+            : '';
+        throw new Error(
+          `Venue cancellation returned status ${venueSubmission.status}.${debugReason}`,
+        );
+      }
+
+      markActionCancelSubmitted({
+        actionId: action.id,
+        accountId: action.accountId,
+        venue: action.venue,
+        actionHash: venueSubmission.actionHash,
+      });
+    } catch (error) {
+      const message =
+        error instanceof TransactionGuardrailError || error instanceof Error
+          ? error.message
+          : 'Cancel request failed unexpectedly.';
+
+      markActionCancelFailed({
+        actionId: action.id,
+        accountId: action.accountId,
+        venue: action.venue,
+        error: message,
+      });
+      setCancelError(message);
+    }
+  }
+
   return (
     <div className="perp-activity-panel">
       <div className="perp-activity-panel-header">
@@ -184,6 +275,7 @@ export function PerpOrdersFillsPanel() {
         </div>
         <span className="perp-activity-panel-pill">Prototype</span>
       </div>
+      {cancelError ? <p className="perp-activity-panel-error">{cancelError}</p> : null}
 
       <div className="perp-activity-table-shell" aria-label="Perp orders and fills table">
         <div className="perp-activity-table-head">
@@ -195,24 +287,53 @@ export function PerpOrdersFillsPanel() {
           <span>Status</span>
           <span>Venue</span>
           <span>Details</span>
+          <span>Action</span>
         </div>
 
         {rows.length > 0 ? (
           <div className="perp-activity-table-body">
-            {rows.map((row) => (
-              <div className="perp-activity-table-row" key={row.rowKey}>
-                <span>{formatTimestamp(row.timestamp)}</span>
-                <span>{row.type}</span>
-                <span>{row.instrument}</span>
-                <span>{row.side}</span>
-                <span>{row.size}</span>
-                <span>
-                  <span className={`perp-activity-status ${row.statusClassName}`}>{row.status}</span>
-                </span>
-                <span>{row.venueLabel}</span>
-                <span className="perp-activity-row-details">{row.details}</span>
-              </div>
-            ))}
+            {rows.map((row) => {
+              const cancelAction = row.cancelState === 'available' ? row.action : undefined;
+
+              return (
+                <div className="perp-activity-table-row" key={row.rowKey}>
+                  <span>{formatTimestamp(row.timestamp)}</span>
+                  <span>{row.type}</span>
+                  <span>{row.instrument}</span>
+                  <span>{row.side}</span>
+                  <span>{row.size}</span>
+                  <span>
+                    <span className={`perp-activity-status ${row.statusClassName}`}>{row.status}</span>
+                  </span>
+                  <span>{row.venueLabel}</span>
+                  <span className="perp-activity-row-details">{row.details}</span>
+                  <span>
+                    {cancelAction ? (
+                      <button
+                        className="perp-activity-action-button"
+                        onClick={() => void handleCancelAction(cancelAction)}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    ) : row.cancelState === 'pending' ? (
+                      <button
+                        aria-busy="true"
+                        className="perp-activity-action-button is-pending"
+                        disabled
+                        type="button"
+                      >
+                        Cancelling...
+                      </button>
+                    ) : (
+                      <span className="perp-activity-action-copy">
+                        not supported by venue/order state
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="perp-activity-empty">

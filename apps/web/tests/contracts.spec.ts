@@ -1,6 +1,7 @@
 import {
   BFF_PUBLIC_PATHS,
   type BffBuildUnsignedActionResponse,
+  type BffBuildUnsignedCancelActionRequest,
   type BffPerpFillsResponse,
   type BffPerpOrderStatusResponse,
   type BffPerpOrderPreviewResponse,
@@ -18,6 +19,7 @@ describe('generated api contracts', () => {
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/wallet/verify');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/orders/preview');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/actions/unsigned');
+    expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/cancels/unsigned');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/actions/submit');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/positions');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/fills');
@@ -69,6 +71,20 @@ describe('generated api contracts', () => {
     };
 
     expect(responseFixture.unsignedActionPayload.accountId).toBe('acct_1');
+  });
+
+  it('exposes unsigned perp cancel request fields in generated types', () => {
+    const requestFixture: BffBuildUnsignedCancelActionRequest = {
+      cancel: {
+        accountId: 'acct_1',
+        venue: 'hyperliquid',
+        instrument: 'BTC-PERP',
+        orderId: 'ord_hl_1',
+        venueOrderId: '918273',
+      },
+    };
+
+    expect(requestFixture.cancel.venueOrderId).toBe('918273');
   });
 
   it('exposes wallet verification endpoints in generated types', () => {

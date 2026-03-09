@@ -10,7 +10,7 @@ export type OrderStatus =
   | 'rejected';
 export type PerpOrderType = 'market' | 'limit';
 export type PositionDirection = 'long' | 'short';
-export type UnsignedActionKind = 'perp_order_action';
+export type UnsignedActionKind = 'perp_order_action' | 'perp_cancel_action';
 
 export interface PerpOrderRequest extends Wallet {
   instrument: string;
@@ -21,6 +21,12 @@ export interface PerpOrderRequest extends Wallet {
   leverage?: string;
   reduceOnly?: boolean;
   clientOrderId?: string;
+}
+
+export interface PerpCancelRequest extends Wallet {
+  instrument: string;
+  orderId: string;
+  venueOrderId: string;
 }
 
 export interface WalletRequestEnvelope {
@@ -41,6 +47,10 @@ export type TransactionSigningPolicy = 'client-signing-only';
 
 export interface BuildUnsignedActionRequest {
   order: PerpOrderRequest;
+}
+
+export interface BuildUnsignedCancelActionRequest {
+  cancel: PerpCancelRequest;
 }
 
 export interface BuildUnsignedActionResponse {

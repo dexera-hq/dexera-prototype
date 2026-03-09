@@ -39,6 +39,27 @@ describe('transaction guardrails', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('accepts a valid unsigned cancel payload', () => {
+    const result = validateUnsignedActionPayload({
+      id: 'uap_cancel_1',
+      accountId: '0x0000000000000000000000000000000000000001',
+      venue: 'hyperliquid',
+      kind: 'perp_cancel_action',
+      action: {
+        action: {
+          type: 'cancel',
+        },
+        nonce: 1733000000000,
+      },
+      walletRequest: {
+        method: 'eth_signTypedData_v4',
+        params: ['0x0000000000000000000000000000000000000001', '{}'],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it('rejects a payload that includes signed action fields', () => {
     const result = validateUnsignedActionPayload({
       id: 'uap_1',
