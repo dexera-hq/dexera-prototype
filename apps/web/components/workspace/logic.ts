@@ -126,8 +126,8 @@ export function packWorkspaceModules(modules: WorkspaceModule[]): PackedWorkspac
   }> = [];
   let occupiedColumns = 0;
 
-  for (const module of modules.map(normalizeWorkspaceModule)) {
-    const columnSpan = module.layout.columns;
+  for (const normalizedModule of modules.map(normalizeWorkspaceModule)) {
+    const columnSpan = normalizedModule.layout.columns;
 
     if (currentRow.length > 0 && occupiedColumns + columnSpan > WORKSPACE_GRID_COLUMNS) {
       packedRows.push(currentRow);
@@ -136,7 +136,7 @@ export function packWorkspaceModules(modules: WorkspaceModule[]): PackedWorkspac
     }
 
     currentRow.push({
-      module,
+      module: normalizedModule,
       columnSpan,
       columnStart: occupiedColumns + 1,
     });

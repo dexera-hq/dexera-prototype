@@ -460,9 +460,9 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
     event.preventDefault();
     event.stopPropagation();
 
-    const module = modules.find((moduleItem) => moduleItem.id === id);
+    const activeModule = modules.find((moduleItem) => moduleItem.id === id);
     const gridElement = gridRef.current;
-    if (!module || !gridElement) {
+    if (!activeModule || !gridElement) {
       return;
     }
 
@@ -474,9 +474,9 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
     resizeSessionRef.current = {
       direction,
       id,
-      kind: module.kind,
-      startColumns: module.layout.columns,
-      startMinHeight: module.layout.minHeight,
+      kind: activeModule.kind,
+      startColumns: activeModule.layout.columns,
+      startMinHeight: activeModule.layout.minHeight,
       startX: event.clientX,
       startY: event.clientY,
       columnStep,
