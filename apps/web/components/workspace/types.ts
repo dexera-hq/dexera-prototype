@@ -7,10 +7,11 @@ export const MODULE_KINDS = [
   'positions',
   'custom',
 ] as const;
-export const MODULE_SIZES = ['full', 'wide', 'normal'] as const;
+export const WORKSPACE_GRID_COLUMNS = 12;
+export const MIN_WORKSPACE_MODULE_COLUMNS = 3;
+export const MAX_WORKSPACE_MODULE_HEIGHT = 960;
 
 export type ModuleKind = (typeof MODULE_KINDS)[number];
-export type ModuleSize = (typeof MODULE_SIZES)[number];
 export type WorkspaceConfigValue =
   | string
   | number
@@ -20,11 +21,15 @@ export type WorkspaceConfigValue =
   | { [key: string]: WorkspaceConfigValue };
 
 export type WorkspaceModuleConfig = Record<string, WorkspaceConfigValue>;
+export type WorkspaceModuleLayout = {
+  columns: number;
+  minHeight: number;
+};
 
 export type WorkspaceModule = {
   id: number;
   kind: ModuleKind;
   label: string;
-  size: ModuleSize;
+  layout: WorkspaceModuleLayout;
   config: WorkspaceModuleConfig;
 };

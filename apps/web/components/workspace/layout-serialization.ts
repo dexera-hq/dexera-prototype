@@ -1,19 +1,20 @@
-import { MODULE_KINDS, MODULE_SIZES } from './types';
+import { createLegacyModuleLayout, normalizeWorkspaceModule } from './logic';
+import { MODULE_KINDS } from './types';
 import type {
   ModuleKind,
-  ModuleSize,
   WorkspaceConfigValue,
   WorkspaceModule,
   WorkspaceModuleConfig,
+  WorkspaceModuleLayout,
 } from './types';
 
-const WORKSPACE_LAYOUT_VERSION = 1;
+const WORKSPACE_LAYOUT_VERSION = 2;
 
 type SerializedWorkspaceBlock = {
   id: number;
   kind: ModuleKind;
   label: string;
-  size: ModuleSize;
+  layout: WorkspaceModuleLayout;
   config: WorkspaceModuleConfig;
 };
 
@@ -22,6 +23,21 @@ type SerializedWorkspaceLayout = {
   nextModuleId: number;
   layout: number[];
   blocks: SerializedWorkspaceBlock[];
+};
+
+type SerializedWorkspaceBlockV1 = {
+  id: number;
+  kind: ModuleKind;
+  label: string;
+  size: 'full' | 'wide' | 'normal';
+  config: WorkspaceModuleConfig;
+};
+
+type SerializedWorkspaceLayoutV1 = {
+  version: 1;
+  nextModuleId: number;
+  layout: number[];
+  blocks: SerializedWorkspaceBlockV1[];
 };
 
 export type WorkspaceLayoutState = {
@@ -42,7 +58,7 @@ export function serializeWorkspaceLayout(state: WorkspaceLayoutState): string {
         id: workspaceModule.id,
         kind: workspaceModule.kind,
         label: workspaceModule.label,
-        size: workspaceModule.size,
+        layout: workspaceModule.layout,
         config: sortConfigObject(workspaceModule.config),
       }))
       .sort((left, right) => left.id - right.id),
@@ -59,17 +75,45 @@ export function deserializeWorkspaceLayout(value: string): WorkspaceLayoutState 
   }
 
   if (!isRecord(parsedValue)) return null;
-  if (parsedValue.version !== WORKSPACE_LAYOUT_VERSION) return null;
+  if (parsedValue.version === WORKSPACE_LAYOUT_VERSION) {
+    return parseVersionTwoLayout(parsedValue);
+  }
+  if (parsedValue.version === 1) {
+    return parseVersionOneLayout(parsedValue as SerializedWorkspaceLayoutV1);
+  }
+  return null;
+}
 
-  const blockItems = parseSerializedBlocks(parsedValue.blocks);
+function parseVersionTwoLayout(value: Record<string, unknown>): WorkspaceLayoutState | null {
+  const blockItems = parseSerializedBlocks(value.blocks);
   if (!blockItems) return null;
 
-  const layout = parseIdArray(parsedValue.layout);
+  const layout = parseIdArray(value.layout);
   if (!layout) return null;
 
+  return buildWorkspaceLayoutState(blockItems, layout, value.nextModuleId);
+}
+
+function parseVersionOneLayout(value: SerializedWorkspaceLayoutV1): WorkspaceLayoutState | null {
+  const blockItems = parseLegacySerializedBlocks(value.blocks);
+  if (!blockItems) return null;
+
+  const layout = parseIdArray(value.layout);
+  if (!layout) return null;
+
+  return buildWorkspaceLayoutState(blockItems, layout, value.nextModuleId);
+}
+
+function buildWorkspaceLayoutState(
+  blocks: WorkspaceModule[],
+  layout: number[],
+  nextModuleId: unknown,
+): WorkspaceLayoutState | null {
   const blockById = new Map<number, WorkspaceModule>();
-  for (const block of blockItems) {
-    if (blockById.has(block.id)) return null;
+  for (const block of blocks) {
+    if (blockById.has(block.id)) {
+      return null;
+    }
     blockById.set(block.id, block);
   }
 
@@ -84,12 +128,12 @@ export function deserializeWorkspaceLayout(value: string): WorkspaceLayoutState 
     usedIds.add(id);
   }
 
-  const remainingBlocks = blockItems
+  const remainingBlocks = blocks
     .filter((block) => !usedIds.has(block.id))
     .sort((left, right) => left.id - right.id);
 
   const modules = [...orderedModules, ...remainingBlocks];
-  const parsedNextModuleId = parsePositiveInteger(parsedValue.nextModuleId);
+  const parsedNextModuleId = parsePositiveInteger(nextModuleId);
 
   return {
     modules,
@@ -97,16 +141,6 @@ export function deserializeWorkspaceLayout(value: string): WorkspaceLayoutState 
       parsedNextModuleId !== null
         ? Math.max(parsedNextModuleId, computeNextModuleId(modules))
         : computeNextModuleId(modules),
-  };
-}
-
-function normalizeWorkspaceModule(workspaceModule: WorkspaceModule): WorkspaceModule {
-  return {
-    id: workspaceModule.id,
-    kind: workspaceModule.kind,
-    label: workspaceModule.label,
-    size: workspaceModule.size,
-    config: sortConfigObject(workspaceModule.config),
   };
 }
 
@@ -120,9 +154,10 @@ function parseSerializedBlocks(value: unknown): WorkspaceModule[] | null {
     const id = parsePositiveInteger(block.id);
     if (id === null) return null;
 
-    if (!isModuleKind(block.kind)) return null;
-    if (!isModuleSize(block.size)) return null;
-    if (typeof block.label !== 'string') return null;
+    if (!isModuleKind(block.kind) || typeof block.label !== 'string') return null;
+
+    const layout = parseModuleLayout(block.kind, block.layout);
+    if (!layout) return null;
 
     const config = parseConfigObject(block.config);
     if (!config) return null;
@@ -131,12 +166,56 @@ function parseSerializedBlocks(value: unknown): WorkspaceModule[] | null {
       id,
       kind: block.kind,
       label: block.label,
-      size: block.size,
+      layout,
       config,
     });
   }
 
   return modules;
+}
+
+function parseLegacySerializedBlocks(value: unknown): WorkspaceModule[] | null {
+  if (!Array.isArray(value)) return null;
+  const modules: WorkspaceModule[] = [];
+
+  for (const block of value) {
+    if (!isRecord(block)) return null;
+
+    const id = parsePositiveInteger(block.id);
+    if (id === null) return null;
+
+    if (!isModuleKind(block.kind) || typeof block.label !== 'string') return null;
+    if (!isLegacyModuleSize(block.size)) return null;
+
+    const config = parseConfigObject(block.config);
+    if (!config) return null;
+
+    modules.push({
+      id,
+      kind: block.kind,
+      label: block.label,
+      layout: createLegacyModuleLayout(block.kind, block.size),
+      config,
+    });
+  }
+
+  return modules;
+}
+
+function parseModuleLayout(kind: ModuleKind, value: unknown): WorkspaceModuleLayout | null {
+  if (!isRecord(value)) return null;
+
+  const columns = parsePositiveInteger(value.columns);
+  const minHeight = parsePositiveInteger(value.minHeight);
+  if (columns === null || minHeight === null) return null;
+
+  return normalizeWorkspaceModule({
+    id: 1,
+    kind,
+    label: '',
+    layout: { columns, minHeight },
+    config: {},
+  }).layout;
 }
 
 function parseIdArray(value: unknown): number[] | null {
@@ -257,14 +336,14 @@ function isModuleKind(value: unknown): value is ModuleKind {
   return typeof value === 'string' && MODULE_KINDS.includes(value as ModuleKind);
 }
 
-function isModuleSize(value: unknown): value is ModuleSize {
-  return typeof value === 'string' && MODULE_SIZES.includes(value as ModuleSize);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function isLegacyModuleSize(value: unknown): value is 'full' | 'wide' | 'normal' {
+  return value === 'full' || value === 'wide' || value === 'normal';
 }
 
 function isConfigObject(value: WorkspaceConfigValue | undefined): value is WorkspaceModuleConfig {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
