@@ -1,6 +1,7 @@
 'use client';
 
 import { OrderEntryPanel } from '@/components/workspace/order-entry-panel';
+import { PerpOrdersFillsPanel } from '@/components/workspace/perp-orders-fills-panel';
 import type { WorkspaceModule } from '@/components/workspace/types';
 import type { WorkspaceMarketDataState } from '@/components/workspace/use-workspace-market-data';
 
@@ -164,6 +165,15 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
       <>
         {renderMarketDataError(marketData.error)}
         <OrderEntryPanel marketData={marketData} />
+      </>
+    );
+  }
+
+  if (module.kind === 'orders') {
+    return (
+      <>
+        {renderMarketDataError(marketData.error)}
+        <PerpOrdersFillsPanel />
       </>
     );
   }

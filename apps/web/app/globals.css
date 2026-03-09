@@ -1194,6 +1194,87 @@ body {
   gap: 0.65rem;
 }
 
+.perp-activity-panel {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.perp-activity-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.perp-activity-panel-title {
+  margin: 0;
+  color: #f2f7ff;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.perp-activity-panel-copy {
+  margin: 0.28rem 0 0;
+  color: #8fa2bf;
+  font-size: 0.82rem;
+}
+
+.perp-activity-panel-pill {
+  width: fit-content;
+  border: 1px solid #2f3a4a;
+  border-radius: 999px;
+  padding: 0.18rem 0.5rem;
+  color: #d9e6fb;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.perp-activity-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.perp-activity-scope span {
+  border: 1px solid #1f2a36;
+  border-radius: 999px;
+  padding: 0.18rem 0.5rem;
+  background: #0e151d;
+  color: #9cb0cd;
+  font-size: 0.75rem;
+}
+
+.perp-activity-table-shell {
+  border: 1px solid #1d2632;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0f151f;
+}
+
+.perp-activity-table-head {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 0.9fr 0.8fr 1.1fr 0.7fr 0.8fr 0.9fr 0.8fr;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid #1d2632;
+  color: #8fa2bf;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.perp-activity-empty {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem 0.9rem;
+}
+
+.perp-activity-empty p {
+  margin: 0;
+  color: #b0c1dc;
+  font-size: 0.84rem;
+}
+
 .positions-pnl {
   color: #b0c1dc;
   font-size: 0.9rem;
@@ -1238,6 +1319,10 @@ body {
   .module-wide,
   .module-normal {
     grid-column: span 12;
+  }
+
+  .perp-activity-table-head {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .positions-grid {

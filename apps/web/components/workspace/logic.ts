@@ -4,8 +4,9 @@ export const initialModules: WorkspaceModule[] = [
   { id: 1, kind: 'overview', label: 'Market Overview', size: 'full', config: {} },
   { id: 2, kind: 'chart', label: 'Price Chart', size: 'wide', config: {} },
   { id: 3, kind: 'trade', label: 'Order Entry', size: 'normal', config: {} },
-  { id: 4, kind: 'orderbook', label: 'Order Book', size: 'normal', config: {} },
-  { id: 5, kind: 'positions', label: 'Open Positions', size: 'wide', config: {} },
+  { id: 4, kind: 'orders', label: 'Perp Orders & Fills', size: 'wide', config: {} },
+  { id: 5, kind: 'orderbook', label: 'Order Book', size: 'normal', config: {} },
+  { id: 6, kind: 'positions', label: 'Open Positions', size: 'wide', config: {} },
 ];
 
 export function moveModule(
