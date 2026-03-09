@@ -15,6 +15,11 @@ import {
 } from '@/components/ui/table';
 import { OrderBookPanel } from '@/components/workspace/order-book-panel';
 import { OrderEntryPanel } from '@/components/workspace/order-entry-panel';
+import {
+  computeTickerBaseVelocity,
+  easeTickerVelocity,
+  wrapTickerOffset,
+} from '@/components/workspace/overview-ticker-motion';
 import { PerpOrdersFillsPanel } from '@/components/workspace/perp-orders-fills-panel';
 import type { WorkspaceModule } from '@/components/workspace/types';
 import type { WorkspaceMarketDataState } from '@/components/workspace/use-workspace-market-data';
@@ -122,6 +127,8 @@ type ModuleContentProps = {
 export function ModuleContent({ module, marketData }: ModuleContentProps) {
   const overviewMarqueeRef = useRef<HTMLDivElement | null>(null);
   const overviewMeasureRef = useRef<HTMLDivElement | null>(null);
+  const overviewTrackRef = useRef<HTMLDivElement | null>(null);
+  const overviewSequenceRef = useRef<HTMLDivElement | null>(null);
   const [overviewRepeatCount, setOverviewRepeatCount] = useState(1);
   const instrumentById = new Map(
     marketData.instruments.map(
@@ -188,6 +195,135 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
     };
   }, [module.kind, overviewCards.length]);
 
+  useEffect(() => {
+    const marquee = overviewMarqueeRef.current;
+    const track = overviewTrackRef.current;
+    const sequence = overviewSequenceRef.current;
+
+    if (module.kind !== 'overview' || !marquee || !track || !sequence) {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let sequenceDistance = 0;
+    let baseVelocity = 0;
+    let currentVelocity = 0;
+    let offset = 0;
+    let isHovered = false;
+    let isReducedMotion = mediaQuery.matches;
+    let frameId = 0;
+    let lastFrameTime = performance.now();
+
+    const applyTransform = () => {
+      if (isReducedMotion || sequenceDistance === 0) {
+        track.style.transform = '';
+        return;
+      }
+
+      track.style.transform = `translate3d(${offset}px, 0, 0)`;
+    };
+
+    const syncMetrics = () => {
+      const trackStyles = window.getComputedStyle(track);
+      const trackGap = Number.parseFloat(trackStyles.columnGap || trackStyles.gap || '0');
+
+      sequenceDistance = sequence.scrollWidth + trackGap;
+      baseVelocity = computeTickerBaseVelocity(sequenceDistance);
+      currentVelocity = isHovered ? Math.min(currentVelocity, baseVelocity) : baseVelocity;
+      offset = wrapTickerOffset(offset, sequenceDistance);
+      applyTransform();
+    };
+
+    const stopAnimation = () => {
+      if (frameId !== 0) {
+        cancelAnimationFrame(frameId);
+        frameId = 0;
+      }
+    };
+
+    const tick = (timestamp: number) => {
+      const deltaMs = Math.min(64, timestamp - lastFrameTime);
+      lastFrameTime = timestamp;
+
+      const targetVelocity = isHovered || isReducedMotion ? 0 : baseVelocity;
+      currentVelocity = easeTickerVelocity(currentVelocity, targetVelocity, deltaMs);
+
+      if (Math.abs(currentVelocity) < 0.0001) {
+        currentVelocity = targetVelocity === 0 ? 0 : targetVelocity;
+      }
+
+      if (sequenceDistance > 0 && currentVelocity > 0) {
+        offset = wrapTickerOffset(offset + currentVelocity * deltaMs, sequenceDistance);
+      }
+
+      applyTransform();
+
+      if (isReducedMotion || (targetVelocity === 0 && currentVelocity === 0)) {
+        frameId = 0;
+        return;
+      }
+
+      frameId = requestAnimationFrame(tick);
+    };
+
+    const startAnimation = () => {
+      if (frameId !== 0 || isReducedMotion || sequenceDistance === 0) {
+        return;
+      }
+
+      lastFrameTime = performance.now();
+      frameId = requestAnimationFrame(tick);
+    };
+
+    const handlePointerEnter = () => {
+      isHovered = true;
+      startAnimation();
+    };
+
+    const handlePointerLeave = () => {
+      isHovered = false;
+      startAnimation();
+    };
+
+    const handleReducedMotionChange = (event: MediaQueryListEvent) => {
+      isReducedMotion = event.matches;
+
+      if (isReducedMotion) {
+        currentVelocity = 0;
+        offset = 0;
+        stopAnimation();
+        applyTransform();
+        return;
+      }
+
+      syncMetrics();
+      startAnimation();
+    };
+
+    syncMetrics();
+    startAnimation();
+
+    const resizeObserver = new ResizeObserver(() => {
+      syncMetrics();
+      startAnimation();
+    });
+
+    resizeObserver.observe(marquee);
+    resizeObserver.observe(sequence);
+    marquee.addEventListener('pointerenter', handlePointerEnter);
+    marquee.addEventListener('pointerleave', handlePointerLeave);
+    mediaQuery.addEventListener('change', handleReducedMotionChange);
+
+    return () => {
+      stopAnimation();
+      resizeObserver.disconnect();
+      marquee.removeEventListener('pointerenter', handlePointerEnter);
+      marquee.removeEventListener('pointerleave', handlePointerLeave);
+      mediaQuery.removeEventListener('change', handleReducedMotionChange);
+      track.style.transform = '';
+    };
+  }, [module.kind, overviewRepeatCount]);
+
   if (module.kind === 'overview') {
     return (
       <div className="relative flex h-full flex-col gap-4">
@@ -226,10 +362,11 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
           </div>
         </div>
         <div ref={overviewMarqueeRef} className="market-ticker-marquee">
-          <div className="market-ticker-track">
+          <div ref={overviewTrackRef} className="market-ticker-track">
             {OVERVIEW_TICKER_COPIES.map((copyIndex) => (
               <div
                 key={copyIndex}
+                ref={copyIndex === 0 ? overviewSequenceRef : undefined}
                 className={cn(
                   'market-ticker-group',
                   copyIndex === 1 && 'market-ticker-group-duplicate',

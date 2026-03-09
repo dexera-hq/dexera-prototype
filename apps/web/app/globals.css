@@ -92,7 +92,6 @@
     width: max-content;
     gap: var(--market-ticker-gap);
     will-change: transform;
-    animation: market-ticker-slide 24s linear infinite;
   }
 
   .market-ticker-group {
@@ -100,10 +99,6 @@
     flex: none;
     gap: var(--market-ticker-gap);
     align-items: stretch;
-  }
-
-  .market-ticker-marquee:hover .market-ticker-track {
-    animation-play-state: paused;
   }
 
   .orderbook-level-flash-buy {
@@ -124,16 +119,6 @@
 
   .orderbook-flow-chip {
     animation: orderbook-flow-chip-in 420ms cubic-bezier(0.16, 1, 0.3, 1);
-  }
-}
-
-@keyframes market-ticker-slide {
-  from {
-    transform: translate3d(calc(-50% - (var(--market-ticker-gap) / 2)), 0, 0);
-  }
-
-  to {
-    transform: translate3d(0, 0, 0);
   }
 }
 
