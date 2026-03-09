@@ -12,6 +12,7 @@ export const SIGNING_ONLY_DISCLAIMER_LINES = [
 
 export type TransactionGuardrailCode =
   | 'invalid-payload'
+  | 'network-failure'
   | 'missing-wallet'
   | 'venue-mismatch'
   | 'account-mismatch'

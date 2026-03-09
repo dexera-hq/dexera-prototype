@@ -200,7 +200,7 @@ export function useSubmittedPerpActionsTracker(
       const walletKey = toWalletKey(input.accountId, input.venue);
       setActionsByWallet((current) => {
         const actions = current[walletKey] ?? [];
-        const nextActions = actions.map((action) => {
+        const nextActions: TrackedPerpAction[] = actions.map((action): TrackedPerpAction => {
           if (action.id !== input.actionId) {
             return action;
           }
@@ -238,7 +238,7 @@ export function useSubmittedPerpActionsTracker(
       const walletKey = toWalletKey(input.accountId, input.venue);
       setActionsByWallet((current) => {
         const actions = current[walletKey] ?? [];
-        const nextActions = actions.map((action) => {
+        const nextActions: TrackedPerpAction[] = actions.map((action): TrackedPerpAction => {
           if (action.id !== input.actionId) {
             return action;
           }
@@ -295,26 +295,28 @@ export function useSubmittedPerpActionsTracker(
 
           setActionsByWallet((current) => {
             const actions = current[walletKey] ?? [];
-            const nextActions = actions.map((candidate) => {
-              if (candidate.id !== action.id) {
-                return candidate;
-              }
+            const nextActions: TrackedPerpAction[] = actions.map(
+              (candidate): TrackedPerpAction => {
+                if (candidate.id !== action.id) {
+                  return candidate;
+                }
 
-              const nextStatus = resolveTrackedPerpActionStatus({
-                status: orderStatus.status,
-                isTerminal: orderStatus.isTerminal,
-              });
+                const nextStatus = resolveTrackedPerpActionStatus({
+                  status: orderStatus.status,
+                  isTerminal: orderStatus.isTerminal,
+                });
 
-              return {
-                ...candidate,
-                status: nextStatus,
-                venueStatus: orderStatus.venueStatus,
-                updatedAt: orderStatus.lastUpdatedAt,
-                isTerminal: orderStatus.isTerminal,
-                reconciliationAttempts: candidate.reconciliationAttempts + 1,
-                lastError: undefined,
-              };
-            });
+                return {
+                  ...candidate,
+                  status: nextStatus,
+                  venueStatus: orderStatus.venueStatus,
+                  updatedAt: orderStatus.lastUpdatedAt,
+                  isTerminal: orderStatus.isTerminal,
+                  reconciliationAttempts: candidate.reconciliationAttempts + 1,
+                  lastError: undefined,
+                };
+              },
+            );
 
             return {
               ...current,
@@ -329,22 +331,24 @@ export function useSubmittedPerpActionsTracker(
 
           setActionsByWallet((current) => {
             const actions = current[walletKey] ?? [];
-            const nextActions = actions.map((candidate) => {
-              if (candidate.id !== action.id) {
-                return candidate;
-              }
+            const nextActions: TrackedPerpAction[] = actions.map(
+              (candidate): TrackedPerpAction => {
+                if (candidate.id !== action.id) {
+                  return candidate;
+                }
 
-              const nextAttempts = candidate.reconciliationAttempts + 1;
-              const shouldFail = nextAttempts >= MAX_RECONCILIATION_ATTEMPTS;
-              return {
-                ...candidate,
-                status: shouldFail ? ('failed' as const) : ('reconciling' as const),
-                updatedAt: new Date().toISOString(),
-                isTerminal: shouldFail,
-                reconciliationAttempts: nextAttempts,
-                lastError: message,
-              };
-            });
+                const nextAttempts = candidate.reconciliationAttempts + 1;
+                const shouldFail = nextAttempts >= MAX_RECONCILIATION_ATTEMPTS;
+                return {
+                  ...candidate,
+                  status: shouldFail ? ('failed' as const) : ('reconciling' as const),
+                  updatedAt: new Date().toISOString(),
+                  isTerminal: shouldFail,
+                  reconciliationAttempts: nextAttempts,
+                  lastError: message,
+                };
+              },
+            );
 
             return {
               ...current,
