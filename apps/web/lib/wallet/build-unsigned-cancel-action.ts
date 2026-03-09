@@ -10,7 +10,7 @@ const DEFAULT_UNSIGNED_CANCEL_ACTION_ENDPOINT = '/api/v1/perp/cancels/unsigned';
 type FetchLike = typeof fetch;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export async function buildUnsignedCancelAction(

@@ -71,6 +71,29 @@ describe('buildUnsignedCancelAction', () => {
     ).rejects.toThrow('Unsigned cancel action build failed with status 501.');
   });
 
+  it('rejects array responses before field validation', async () => {
+    await expect(
+      buildUnsignedCancelAction(
+        {
+          cancel: {
+            accountId: '0xabc123',
+            venue: 'hyperliquid',
+            instrument: 'BTC-PERP',
+            orderId: 'ord_hl_1',
+            venueOrderId: '918273645',
+          },
+        },
+        {
+          fetchImpl: async () =>
+            ({
+              ok: true,
+              json: async () => [],
+            }) as Response,
+        },
+      ),
+    ).rejects.toThrow('Unsigned cancel action build response must be a JSON object.');
+  });
+
   it('rejects non-cancel unsigned payloads', async () => {
     await expect(
       buildUnsignedCancelAction(

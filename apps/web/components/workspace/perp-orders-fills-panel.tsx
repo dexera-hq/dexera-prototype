@@ -292,44 +292,48 @@ export function PerpOrdersFillsPanel() {
 
         {rows.length > 0 ? (
           <div className="perp-activity-table-body">
-            {rows.map((row) => (
-              <div className="perp-activity-table-row" key={row.rowKey}>
-                <span>{formatTimestamp(row.timestamp)}</span>
-                <span>{row.type}</span>
-                <span>{row.instrument}</span>
-                <span>{row.side}</span>
-                <span>{row.size}</span>
-                <span>
-                  <span className={`perp-activity-status ${row.statusClassName}`}>{row.status}</span>
-                </span>
-                <span>{row.venueLabel}</span>
-                <span className="perp-activity-row-details">{row.details}</span>
-                <span>
-                  {row.cancelState === 'available' && row.action ? (
-                    <button
-                      className="perp-activity-action-button"
-                      onClick={() => void handleCancelAction(row.action!)}
-                      type="button"
-                    >
-                      Cancel
-                    </button>
-                  ) : row.cancelState === 'pending' ? (
-                    <button
-                      aria-busy="true"
-                      className="perp-activity-action-button is-pending"
-                      disabled
-                      type="button"
-                    >
-                      Cancelling...
-                    </button>
-                  ) : (
-                    <span className="perp-activity-action-copy">
-                      not supported by venue/order state
-                    </span>
-                  )}
-                </span>
-              </div>
-            ))}
+            {rows.map((row) => {
+              const cancelAction = row.cancelState === 'available' ? row.action : undefined;
+
+              return (
+                <div className="perp-activity-table-row" key={row.rowKey}>
+                  <span>{formatTimestamp(row.timestamp)}</span>
+                  <span>{row.type}</span>
+                  <span>{row.instrument}</span>
+                  <span>{row.side}</span>
+                  <span>{row.size}</span>
+                  <span>
+                    <span className={`perp-activity-status ${row.statusClassName}`}>{row.status}</span>
+                  </span>
+                  <span>{row.venueLabel}</span>
+                  <span className="perp-activity-row-details">{row.details}</span>
+                  <span>
+                    {cancelAction ? (
+                      <button
+                        className="perp-activity-action-button"
+                        onClick={() => void handleCancelAction(cancelAction)}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    ) : row.cancelState === 'pending' ? (
+                      <button
+                        aria-busy="true"
+                        className="perp-activity-action-button is-pending"
+                        disabled
+                        type="button"
+                      >
+                        Cancelling...
+                      </button>
+                    ) : (
+                      <span className="perp-activity-action-copy">
+                        not supported by venue/order state
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="perp-activity-empty">
