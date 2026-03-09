@@ -444,68 +444,30 @@ func (a *hyperliquidAdapter) GetPositions(
 	r *http.Request,
 	query perpPositionsQuery,
 ) (perpPositionsResponse, error) {
-	params := url.Values{}
-	params.Set("accountId", query.AccountID)
-	if query.Instrument != "" {
-		params.Set("instrument", query.Instrument)
-	}
-
-	payload, err := a.getJSON(r.Context(), "/v1/perp/positions", params)
+	payload, err := a.postJSON(r.Context(), "/info", map[string]any{
+		"type": "clearinghouseState",
+		"user": strings.TrimSpace(query.AccountID),
+	})
 	if err != nil {
 		return perpPositionsResponse{}, err
 	}
 
-	rawPositions, _ := payload["positions"].([]any)
-	positions := make([]perpPosition, 0, len(rawPositions))
-	for idx, item := range rawPositions {
-		positionMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		positionID := stringField(positionMap, "positionId")
-		if positionID == "" {
-			positionID = fmt.Sprintf("pos_hl_%d_%d", time.Now().UTC().Unix(), idx)
-		}
-		position := perpPosition{
-			PositionID:       positionID,
-			AccountID:        query.AccountID,
-			Venue:            venueHyperliquid,
-			Instrument:       firstNonEmptyString(stringField(positionMap, "instrument"), query.Instrument, "BTC-PERP"),
-			Direction:        firstNonEmptyString(stringField(positionMap, "direction"), "long"),
-			Status:           firstNonEmptyString(stringField(positionMap, "status"), "open"),
-			Size:             firstNonEmptyString(stringField(positionMap, "size"), "0"),
-			EntryPrice:       firstNonEmptyString(stringField(positionMap, "entryPrice"), "0"),
-			MarkPrice:        firstNonEmptyString(stringField(positionMap, "markPrice"), "0"),
-			NotionalValue:    firstNonEmptyString(stringField(positionMap, "notionalValue"), "0"),
-			Leverage:         stringField(positionMap, "leverage"),
-			UnrealizedPnLUSD: firstNonEmptyString(stringField(positionMap, "unrealizedPnlUsd"), "0"),
-			LastUpdatedAt: firstNonEmptyString(
-				stringField(positionMap, "lastUpdatedAt"),
-				time.Now().UTC().Format(time.RFC3339),
-			),
-		}
-		positions = append(positions, position)
+	userState, err := decodeHyperliquidUserState(payload)
+	if err != nil {
+		return perpPositionsResponse{}, err
 	}
 
-	if len(positions) == 0 {
-		now := time.Now().UTC().Format(time.RFC3339)
-		positions = []perpPosition{
-			{
-				PositionID:       "pos_hl_mock_001",
-				AccountID:        query.AccountID,
-				Venue:            venueHyperliquid,
-				Instrument:       firstNonEmptyString(query.Instrument, "BTC-PERP"),
-				Direction:        "long",
-				Status:           "open",
-				Size:             "0.25",
-				EntryPrice:       "68500.0",
-				MarkPrice:        "68720.0",
-				NotionalValue:    "17180.00",
-				Leverage:         "5",
-				UnrealizedPnLUSD: "55.00",
-				LastUpdatedAt:    now,
-			},
+	filteredCoin := normalizePerpCoinFromInstrument(query.Instrument)
+	positions := make([]perpPosition, 0, len(userState.AssetPositions))
+	for _, assetPosition := range userState.AssetPositions {
+		position := mapHyperliquidPosition(query.AccountID, assetPosition)
+		if position == nil {
+			continue
 		}
+		if filteredCoin != "" && !strings.EqualFold(normalizePerpCoinFromInstrument(position.Instrument), filteredCoin) {
+			continue
+		}
+		positions = append(positions, *position)
 	}
 
 	return perpPositionsResponse{
@@ -960,6 +922,84 @@ func formatPerpInstrumentFromCoin(coin string) string {
 		return normalized
 	}
 	return normalized + "-PERP"
+}
+
+func decodeHyperliquidUserState(payload map[string]any) (*hyperliquid.UserState, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var userState hyperliquid.UserState
+	if err := json.Unmarshal(body, &userState); err != nil {
+		return nil, err
+	}
+
+	return &userState, nil
+}
+
+func formatDecimalString(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
+}
+
+func formatHyperliquidPositionID(accountID string, coin string) string {
+	normalizedAccountID := strings.TrimSpace(strings.ToLower(accountID))
+	normalizedCoin := strings.TrimSpace(strings.ToLower(coin))
+	if normalizedAccountID == "" {
+		return fmt.Sprintf("pos_hl_%s", normalizedCoin)
+	}
+	return fmt.Sprintf("pos_hl_%s_%s", normalizedAccountID, normalizedCoin)
+}
+
+func mapHyperliquidPosition(accountID string, assetPosition hyperliquid.AssetPosition) *perpPosition {
+	position := assetPosition.Position
+	instrument := formatPerpInstrumentFromCoin(position.Coin)
+	if instrument == "" {
+		return nil
+	}
+
+	rawSize, err := strconv.ParseFloat(strings.TrimSpace(position.Szi), 64)
+	if err != nil || rawSize == 0 {
+		return nil
+	}
+
+	size := math.Abs(rawSize)
+	direction := "long"
+	if rawSize < 0 {
+		direction = "short"
+	}
+
+	entryPrice := "0"
+	if position.EntryPx != nil && strings.TrimSpace(*position.EntryPx) != "" {
+		entryPrice = strings.TrimSpace(*position.EntryPx)
+	}
+
+	notionalValue := firstNonEmptyString(strings.TrimSpace(position.PositionValue), "0")
+	markPrice := entryPrice
+	if positionValue, err := strconv.ParseFloat(notionalValue, 64); err == nil && size > 0 {
+		markPrice = formatDecimalString(math.Abs(positionValue) / size)
+	}
+
+	leverage := ""
+	if position.Leverage.Value > 0 {
+		leverage = strconv.Itoa(position.Leverage.Value)
+	}
+
+	return &perpPosition{
+		PositionID:       formatHyperliquidPositionID(accountID, position.Coin),
+		AccountID:        strings.TrimSpace(accountID),
+		Venue:            venueHyperliquid,
+		Instrument:       instrument,
+		Direction:        direction,
+		Status:           "open",
+		Size:             formatDecimalString(size),
+		EntryPrice:       entryPrice,
+		MarkPrice:        firstNonEmptyString(markPrice, "0"),
+		NotionalValue:    notionalValue,
+		Leverage:         leverage,
+		UnrealizedPnLUSD: firstNonEmptyString(strings.TrimSpace(position.UnrealizedPnl), "0"),
+		LastUpdatedAt:    time.Now().UTC().Format(time.RFC3339),
+	}
 }
 
 func normalizeHyperliquidFillSide(fill hyperliquid.Fill) string {

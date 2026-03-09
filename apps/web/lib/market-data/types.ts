@@ -13,6 +13,9 @@ export type MarkPrice = {
 };
 
 export type PerpPosition = {
+  positionId: string;
+  accountId: string;
+  venue: 'hyperliquid' | 'aster';
   instrument: string;
   direction: 'long' | 'short';
   size: string;
@@ -22,6 +25,7 @@ export type PerpPosition = {
   notionalValue: string;
   leverage?: string;
   status: 'open' | 'closed' | 'liquidated';
+  lastUpdatedAt: string;
 };
 
 export type PerpFill = {

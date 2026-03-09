@@ -46,6 +46,9 @@ const BASE_MARK_BY_INSTRUMENT: Readonly<Record<string, number>> = {
 
 const BASE_POSITIONS: ReadonlyArray<PerpPosition> = [
   {
+    positionId: 'pos_mock_btc_1',
+    accountId: 'acct_demo',
+    venue: 'hyperliquid',
     instrument: 'BTC-PERP',
     direction: 'long',
     size: '0.25',
@@ -55,8 +58,12 @@ const BASE_POSITIONS: ReadonlyArray<PerpPosition> = [
     notionalValue: '17112.56',
     leverage: '4',
     status: 'open',
+    lastUpdatedAt: '2026-03-09T09:42:00.000Z',
   },
   {
+    positionId: 'pos_mock_eth_1',
+    accountId: 'acct_demo',
+    venue: 'hyperliquid',
     instrument: 'ETH-PERP',
     direction: 'short',
     size: '1.60',
@@ -66,6 +73,7 @@ const BASE_POSITIONS: ReadonlyArray<PerpPosition> = [
     notionalValue: '5120.24',
     leverage: '3',
     status: 'open',
+    lastUpdatedAt: '2026-03-09T09:39:00.000Z',
   },
 ];
 
@@ -232,6 +240,7 @@ export function getMockPositions(accountId?: string): PerpPosition[] {
 
     return {
       ...position,
+      accountId: normalizedAccountId,
       size: scaledSize.toFixed(3),
       notionalValue: scaledNotional.toFixed(2),
     };

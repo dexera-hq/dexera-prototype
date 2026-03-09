@@ -19,13 +19,16 @@ test('dropping a module onto another module keeps them in the same row', async (
   await page.goto('/');
   await expect(page.getByTestId('app-brand')).toBeVisible();
 
+  const moduleCards = page.getByTestId('module-card');
   const chartTitle = page.getByTestId('module-title').filter({ hasText: 'Price Chart' });
   const positionsTitle = page.getByTestId('module-title').filter({ hasText: 'Open Positions' });
-  const chartCard = chartTitle.locator('xpath=ancestor::*[@data-testid="module-card"][1]');
-  const positionsCard = positionsTitle.locator('xpath=ancestor::*[@data-testid="module-card"][1]');
+  const chartCard = moduleCards.filter({ has: chartTitle });
+  const positionsCard = moduleCards.filter({ has: positionsTitle });
 
   await expect(chartTitle).toBeVisible();
   await expect(positionsTitle).toBeVisible();
+  await expect(chartCard).toBeVisible();
+  await expect(positionsCard).toBeVisible();
 
   const chartBox = await chartCard.boundingBox();
 
