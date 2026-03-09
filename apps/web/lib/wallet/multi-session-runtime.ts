@@ -980,7 +980,10 @@ export async function signAndSubmitRuntimeSlotAction(parameters: {
     throw new Error('The runtime session account does not match the selected account.');
   }
 
-  if (parameters.payload.kind !== 'perp_order_action') {
+  if (
+    parameters.payload.kind !== 'perp_order_action' &&
+    parameters.payload.kind !== 'perp_cancel_action'
+  ) {
     throw new Error('Unsupported unsigned action kind.');
   }
   if (!runtime.provider) {
@@ -1017,7 +1020,10 @@ export async function signRuntimeSlotActionPayload(parameters: {
     throw new Error('The runtime session account does not match the selected account.');
   }
 
-  if (parameters.payload.kind !== 'perp_order_action') {
+  if (
+    parameters.payload.kind !== 'perp_order_action' &&
+    parameters.payload.kind !== 'perp_cancel_action'
+  ) {
     throw new Error('Unsupported unsigned action kind.');
   }
   if (!runtime.provider) {

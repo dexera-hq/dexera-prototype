@@ -1135,6 +1135,12 @@ body {
   gap: 0.8rem;
 }
 
+.perp-activity-panel-error {
+  margin: 0;
+  color: #ff9bb4;
+  font-size: 0.8rem;
+}
+
 .perp-activity-panel-header {
   display: flex;
   align-items: flex-start;
@@ -1191,7 +1197,7 @@ body {
 .perp-activity-table-head {
   display: grid;
   gap: 0.5rem;
-  grid-template-columns: 0.9fr 0.8fr 1.1fr 0.7fr 0.8fr 0.9fr 0.8fr 1.2fr;
+  grid-template-columns: 0.9fr 0.75fr 1fr 0.65fr 0.7fr 0.8fr 0.75fr 1.1fr 1fr;
   padding: 0.75rem 0.9rem;
   border-bottom: 1px solid #1d2632;
   color: #8fa2bf;
@@ -1212,7 +1218,7 @@ body {
 .perp-activity-table-row {
   display: grid;
   gap: 0.5rem;
-  grid-template-columns: 0.9fr 0.8fr 1.1fr 0.7fr 0.8fr 0.9fr 0.8fr 1.2fr;
+  grid-template-columns: 0.9fr 0.75fr 1fr 0.65fr 0.7fr 0.8fr 0.75fr 1.1fr 1fr;
   align-items: center;
   padding: 0.78rem 0.9rem;
   border-top: 1px solid #141b24;
@@ -1231,6 +1237,39 @@ body {
 
 .perp-activity-row-details {
   color: #8fa2bf;
+}
+
+.perp-activity-action-button {
+  border: 1px solid #245784;
+  border-radius: 999px;
+  padding: 0.22rem 0.58rem;
+  background: transparent;
+  color: #8fc7ff;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    color 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.perp-activity-action-button:hover {
+  border-color: #4e89b7;
+  background: rgba(78, 137, 183, 0.12);
+}
+
+.perp-activity-action-button:disabled,
+.perp-activity-action-button.is-pending {
+  border-color: #384655;
+  color: #8fa2bf;
+  cursor: default;
+  background: rgba(56, 70, 85, 0.18);
+}
+
+.perp-activity-action-copy {
+  color: #8fa2bf;
+  font-size: 0.76rem;
 }
 
 .perp-activity-status.status-optimistic_submitting,

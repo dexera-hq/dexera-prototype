@@ -93,6 +93,18 @@ export interface BffBuildUnsignedActionRequest {
   order: BffPerpOrderRequest;
 }
 
+export interface BffPerpCancelRequest {
+  accountId: string;
+  venue: BffVenueId;
+  instrument: string;
+  orderId: string;
+  venueOrderId: string;
+}
+
+export interface BffBuildUnsignedCancelActionRequest {
+  cancel: BffPerpCancelRequest;
+}
+
 export interface BffPerpOrderPreviewResponse {
   previewId: string;
   accountId: string;
@@ -113,7 +125,7 @@ export interface BffUnsignedActionPayload {
   id: string;
   accountId: string;
   venue: BffVenueId;
-  kind: 'perp_order_action';
+  kind: 'perp_order_action' | 'perp_cancel_action';
   action: Record<string, unknown>;
   walletRequest: BffWalletRequestEnvelope;
 }
@@ -274,6 +286,18 @@ export interface BffBuildUnsignedActionRequest {
   order: BffPerpOrderRequest;
 }
 
+export interface BffPerpCancelRequest {
+  accountId: string;
+  venue: BffVenueId;
+  instrument: string;
+  orderId: string;
+  venueOrderId: string;
+}
+
+export interface BffBuildUnsignedCancelActionRequest {
+  cancel: BffPerpCancelRequest;
+}
+
 export interface BffPerpOrderPreviewResponse {
   previewId: string;
   accountId: string;
@@ -294,7 +318,7 @@ export interface BffUnsignedActionPayload {
   id: string;
   accountId: string;
   venue: BffVenueId;
-  kind: 'perp_order_action';
+  kind: 'perp_order_action' | 'perp_cancel_action';
   action: Record<string, unknown>;
   walletRequest: BffWalletRequestEnvelope;
 }

@@ -110,7 +110,7 @@ export function validateUnsignedActionPayload(
     };
   }
 
-  if (payload.kind !== 'perp_order_action') {
+  if (payload.kind !== 'perp_order_action' && payload.kind !== 'perp_cancel_action') {
     return {
       ok: false,
       error: new TransactionGuardrailError(

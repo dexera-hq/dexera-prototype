@@ -47,6 +47,10 @@ export type TrackedPerpAction = {
   updatedAt: string;
   isTerminal: boolean;
   reconciliationAttempts: number;
+  isCancelPending?: boolean;
+  cancelActionHash?: string;
+  cancelRequestedAt?: string;
+  cancelError?: string;
   lastError?: string;
 };
 
@@ -89,6 +93,10 @@ function normalizeOptionalString(value: unknown): string | undefined {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 function coerceTrackedPerpAction(candidate: unknown): TrackedPerpAction | null {
@@ -137,6 +145,10 @@ function coerceTrackedPerpAction(candidate: unknown): TrackedPerpAction | null {
     updatedAt: candidate.updatedAt,
     isTerminal: candidate.isTerminal,
     reconciliationAttempts: candidate.reconciliationAttempts as number,
+    isCancelPending: normalizeOptionalBoolean(candidate.isCancelPending),
+    cancelActionHash: normalizeOptionalString(candidate.cancelActionHash),
+    cancelRequestedAt: normalizeOptionalString(candidate.cancelRequestedAt),
+    cancelError: normalizeOptionalString(candidate.cancelError),
     lastError: normalizeOptionalString(candidate.lastError),
   };
 }
@@ -235,6 +247,29 @@ export function formatTrackedPerpActionStatusLabel(status: TrackedPerpActionStat
   }
 }
 
+export type TrackedPerpActionCancelState = 'available' | 'pending' | 'unsupported';
+
+export function resolveTrackedPerpActionCancelState(
+  action: Pick<
+    TrackedPerpAction,
+    'venue' | 'status' | 'isTerminal' | 'venueOrderId' | 'orderId' | 'isCancelPending'
+  >,
+): TrackedPerpActionCancelState {
+  if (action.venue !== 'hyperliquid' || action.isTerminal) {
+    return 'unsupported';
+  }
+  if (!action.venueOrderId || action.venueOrderId.trim().length === 0) {
+    return 'unsupported';
+  }
+  if (!action.orderId || action.orderId.trim().length === 0) {
+    return 'unsupported';
+  }
+  if (action.isCancelPending) {
+    return 'pending';
+  }
+  return action.status === 'open' ? 'available' : 'unsupported';
+}
+
 type UseSubmittedPerpActionsTrackerParameters = {
   activeWallet: {
     accountId: string;
@@ -268,6 +303,23 @@ type SubmittedPerpActionsTrackerApi = {
     venue: BffVenueId;
     error: string;
   }) => void;
+  markActionCancelStarted: (input: {
+    actionId: string;
+    accountId: string;
+    venue: BffVenueId;
+  }) => void;
+  markActionCancelSubmitted: (input: {
+    actionId: string;
+    accountId: string;
+    venue: BffVenueId;
+    actionHash: string;
+  }) => void;
+  markActionCancelFailed: (input: {
+    actionId: string;
+    accountId: string;
+    venue: BffVenueId;
+    error: string;
+  }) => void;
 };
 
 const submittedPerpActionsTrackerFallback: SubmittedPerpActionsTrackerApi = {
@@ -275,6 +327,9 @@ const submittedPerpActionsTrackerFallback: SubmittedPerpActionsTrackerApi = {
   addOptimisticAction: () => null,
   markActionSubmitted: () => undefined,
   markActionFailed: () => undefined,
+  markActionCancelStarted: () => undefined,
+  markActionCancelSubmitted: () => undefined,
+  markActionCancelFailed: () => undefined,
 };
 
 const SubmittedPerpActionsTrackerContext = createContext<SubmittedPerpActionsTrackerApi>(
@@ -381,6 +436,10 @@ function useSubmittedPerpActionsTrackerState(
             status: hasVenueOrderId ? 'reconciling' : 'submitted',
             updatedAt: new Date().toISOString(),
             isTerminal: false,
+            isCancelPending: false,
+            cancelActionHash: undefined,
+            cancelRequestedAt: undefined,
+            cancelError: undefined,
             lastError: undefined,
           };
         });
@@ -414,6 +473,108 @@ function useSubmittedPerpActionsTrackerState(
             updatedAt: new Date().toISOString(),
             isTerminal: true,
             lastError: input.error,
+          };
+        });
+
+        return {
+          ...current,
+          [walletKey]: nextActions,
+        };
+      });
+    },
+    [],
+  );
+
+  const markActionCancelStarted = useCallback(
+    (input: { actionId: string; accountId: string; venue: BffVenueId }) => {
+      if (input.venue !== 'hyperliquid') {
+        return;
+      }
+
+      const walletKey = toWalletKey(input.accountId, input.venue);
+      setActionsByWallet((current) => {
+        const actions = current[walletKey] ?? [];
+        const nextActions = actions.map((action): TrackedPerpAction => {
+          if (action.id !== input.actionId) {
+            return action;
+          }
+
+          return {
+            ...action,
+            isCancelPending: true,
+            cancelActionHash: undefined,
+            cancelRequestedAt: new Date().toISOString(),
+            cancelError: undefined,
+            updatedAt: new Date().toISOString(),
+          };
+        });
+
+        return {
+          ...current,
+          [walletKey]: nextActions,
+        };
+      });
+    },
+    [],
+  );
+
+  const markActionCancelSubmitted = useCallback(
+    (input: {
+      actionId: string;
+      accountId: string;
+      venue: BffVenueId;
+      actionHash: string;
+    }) => {
+      if (input.venue !== 'hyperliquid') {
+        return;
+      }
+
+      const walletKey = toWalletKey(input.accountId, input.venue);
+      setActionsByWallet((current) => {
+        const actions = current[walletKey] ?? [];
+        const nextActions = actions.map((action): TrackedPerpAction => {
+          if (action.id !== input.actionId) {
+            return action;
+          }
+
+          return {
+            ...action,
+            isCancelPending: true,
+            cancelActionHash: input.actionHash,
+            cancelError: undefined,
+            updatedAt: new Date().toISOString(),
+          };
+        });
+
+        return {
+          ...current,
+          [walletKey]: nextActions,
+        };
+      });
+    },
+    [],
+  );
+
+  const markActionCancelFailed = useCallback(
+    (input: { actionId: string; accountId: string; venue: BffVenueId; error: string }) => {
+      if (input.venue !== 'hyperliquid') {
+        return;
+      }
+
+      const walletKey = toWalletKey(input.accountId, input.venue);
+      setActionsByWallet((current) => {
+        const actions = current[walletKey] ?? [];
+        const nextActions = actions.map((action): TrackedPerpAction => {
+          if (action.id !== input.actionId) {
+            return action;
+          }
+
+          return {
+            ...action,
+            isCancelPending: false,
+            cancelActionHash: undefined,
+            cancelError: input.error,
+            updatedAt: new Date().toISOString(),
           };
         });
 
@@ -478,6 +639,14 @@ function useSubmittedPerpActionsTrackerState(
                   updatedAt: orderStatus.lastUpdatedAt,
                   isTerminal: orderStatus.isTerminal,
                   reconciliationAttempts: candidate.reconciliationAttempts + 1,
+                  isCancelPending:
+                    nextStatus === 'cancelled' || nextStatus === 'filled' || orderStatus.isTerminal
+                      ? false
+                      : candidate.isCancelPending,
+                  cancelError:
+                    nextStatus === 'cancelled' || nextStatus === 'filled' || orderStatus.isTerminal
+                      ? undefined
+                      : candidate.cancelError,
                   lastError: undefined,
                 };
               },
@@ -559,6 +728,9 @@ function useSubmittedPerpActionsTrackerState(
     addOptimisticAction,
     markActionSubmitted,
     markActionFailed,
+    markActionCancelStarted,
+    markActionCancelSubmitted,
+    markActionCancelFailed,
   };
 }
 

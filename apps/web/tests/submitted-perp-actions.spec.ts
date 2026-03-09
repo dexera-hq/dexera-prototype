@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   deserializeTrackedPerpActions,
   formatTrackedPerpActionStatusLabel,
+  resolveTrackedPerpActionCancelState,
   resolveTrackedPerpActionStatus,
   serializeTrackedPerpActions,
 } from '../lib/wallet/use-submitted-perp-actions';
@@ -32,6 +33,39 @@ describe('submitted perp actions tracker helpers', () => {
     expect(formatTrackedPerpActionStatusLabel('filled')).toBe('filled');
   });
 
+  it('resolves cancel states for tracked actions', () => {
+    expect(
+      resolveTrackedPerpActionCancelState({
+        venue: 'hyperliquid',
+        status: 'open',
+        isTerminal: false,
+        venueOrderId: '918273',
+        orderId: 'ord_1',
+        isCancelPending: false,
+      }),
+    ).toBe('available');
+    expect(
+      resolveTrackedPerpActionCancelState({
+        venue: 'hyperliquid',
+        status: 'open',
+        isTerminal: false,
+        venueOrderId: '918273',
+        orderId: 'ord_1',
+        isCancelPending: true,
+      }),
+    ).toBe('pending');
+    expect(
+      resolveTrackedPerpActionCancelState({
+        venue: 'hyperliquid',
+        status: 'reconciling',
+        isTerminal: false,
+        venueOrderId: '918273',
+        orderId: 'ord_1',
+        isCancelPending: false,
+      }),
+    ).toBe('unsupported');
+  });
+
   it('round-trips persisted tracked actions and filters invalid rows', () => {
     const serialized = serializeTrackedPerpActions({
       'hyperliquid:0xabc123': [
@@ -53,6 +87,10 @@ describe('submitted perp actions tracker helpers', () => {
           updatedAt: '2026-03-09T10:00:30.000Z',
           isTerminal: false,
           reconciliationAttempts: 2,
+          isCancelPending: true,
+          cancelActionHash: '0xcancelhash',
+          cancelRequestedAt: '2026-03-09T10:00:31.000Z',
+          cancelError: undefined,
           lastError: undefined,
         },
         {
@@ -92,6 +130,10 @@ describe('submitted perp actions tracker helpers', () => {
           updatedAt: '2026-03-09T10:00:30.000Z',
           isTerminal: false,
           reconciliationAttempts: 2,
+          isCancelPending: true,
+          cancelActionHash: '0xcancelhash',
+          cancelRequestedAt: '2026-03-09T10:00:31.000Z',
+          cancelError: undefined,
           lastError: undefined,
         },
       ],
