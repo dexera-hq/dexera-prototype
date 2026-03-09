@@ -458,10 +458,34 @@ func (a *hyperliquidAdapter) GetPositions(
 }
 
 func (a *hyperliquidAdapter) GetFills(
-	_ *http.Request,
-	_ perpFillsQuery,
+	r *http.Request,
+	query perpFillsQuery,
 ) (perpFillsResponse, error) {
-	return perpFillsResponse{}, errors.New("perp fills are not implemented for hyperliquid yet")
+	rawFills, err := a.infoClient.UserFills(r.Context(), hyperliquid.UserFillsParams{
+		Address: query.AccountID,
+	})
+	if err != nil {
+		return perpFillsResponse{}, err
+	}
+
+	fills := make([]perpFill, 0, len(rawFills))
+	for _, rawFill := range rawFills {
+		fill := mapHyperliquidFill(query.AccountID, rawFill)
+		if fill == nil {
+			continue
+		}
+		if query.Instrument != "" && !strings.EqualFold(fill.Instrument, query.Instrument) {
+			continue
+		}
+		fills = append(fills, *fill)
+	}
+
+	return perpFillsResponse{
+		AccountID: query.AccountID,
+		Venue:     venueHyperliquid,
+		Fills:     fills,
+		Source:    string(venueHyperliquid),
+	}, nil
 }
 
 func (a *hyperliquidAdapter) GetOrderStatus(
@@ -859,6 +883,86 @@ func normalizePerpCoinFromInstrument(instrument string) string {
 	}
 
 	return strings.TrimSuffix(normalized, "-PERP")
+}
+
+func formatPerpInstrumentFromCoin(coin string) string {
+	normalized := strings.ToUpper(strings.TrimSpace(coin))
+	if normalized == "" {
+		return ""
+	}
+	if strings.Contains(normalized, "-PERP") {
+		return normalized
+	}
+	return normalized + "-PERP"
+}
+
+func normalizeHyperliquidFillSide(fill hyperliquid.Fill) string {
+	switch strings.ToUpper(strings.TrimSpace(fill.Side)) {
+	case "B":
+		return "buy"
+	case "A":
+		return "sell"
+	}
+
+	normalizedDir := strings.ToLower(strings.TrimSpace(fill.Dir))
+	switch normalizedDir {
+	case "open long", "close short":
+		return "buy"
+	case "open short", "close long":
+		return "sell"
+	default:
+		return ""
+	}
+}
+
+func mapHyperliquidFill(accountID string, fill hyperliquid.Fill) *perpFill {
+	instrument := formatPerpInstrumentFromCoin(fill.Coin)
+	side := normalizeHyperliquidFillSide(fill)
+	if instrument == "" || side == "" {
+		return nil
+	}
+
+	fillID := strings.TrimSpace(fill.Hash)
+	if fillID == "" && fill.Tid > 0 {
+		fillID = fmt.Sprintf("fill_hl_%d", fill.Tid)
+	}
+	if fillID == "" {
+		fillID = fmt.Sprintf("fill_hl_%d_%d", fill.Oid, fill.Time)
+	}
+
+	orderID := ""
+	if fill.Oid > 0 {
+		orderID = strconv.FormatInt(fill.Oid, 10)
+	}
+	if orderID == "" {
+		orderID = fillID
+	}
+
+	filledAt := time.Now().UTC().Format(time.RFC3339)
+	if fill.Time > 0 {
+		filledAt = time.UnixMilli(fill.Time).UTC().Format(time.RFC3339)
+	}
+
+	result := &perpFill{
+		ID:         fillID,
+		AccountID:  strings.TrimSpace(accountID),
+		Venue:      venueHyperliquid,
+		OrderID:    orderID,
+		Instrument: instrument,
+		Side:       side,
+		Size:       strings.TrimSpace(fill.Size),
+		Price:      strings.TrimSpace(fill.Price),
+		FilledAt:   filledAt,
+	}
+
+	if fee := strings.TrimSpace(fill.Fee); fee != "" {
+		result.FeeAmount = fee
+	}
+	if feeToken := strings.TrimSpace(fill.FeeToken); feeToken != "" {
+		result.FeeAsset = feeToken
+	}
+
+	return result
 }
 
 func normalizeHyperliquidWireDecimal(raw string) (string, error) {
