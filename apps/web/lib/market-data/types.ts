@@ -23,3 +23,15 @@ export type PerpPosition = {
   leverage?: string;
   status: 'open' | 'closed' | 'liquidated';
 };
+
+export type PerpFill = {
+  id: string;
+  accountId: string;
+  venue: 'hyperliquid' | 'aster';
+  instrument: string;
+  side: 'buy' | 'sell';
+  size: string;
+  price: string;
+  orderId: string;
+  filledAt: string;
+};

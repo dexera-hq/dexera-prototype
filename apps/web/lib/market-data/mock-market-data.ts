@@ -1,4 +1,4 @@
-import type { InstrumentMetadata, MarkPrice, PerpPosition } from '@/lib/market-data/types';
+import type { InstrumentMetadata, MarkPrice, PerpFill, PerpPosition } from '@/lib/market-data/types';
 
 const MOCK_INSTRUMENTS: readonly InstrumentMetadata[] = [
   {
@@ -69,6 +69,53 @@ const BASE_POSITIONS: ReadonlyArray<PerpPosition> = [
   },
 ];
 
+const BASE_FILLS: ReadonlyArray<PerpFill> = [
+  {
+    id: 'fill_hl_btc_1',
+    accountId: 'acct_demo',
+    venue: 'hyperliquid',
+    instrument: 'BTC-PERP',
+    side: 'buy',
+    size: '0.120',
+    price: '68410.25',
+    orderId: 'ord_hl_btc_1',
+    filledAt: '2026-03-09T09:42:00.000Z',
+  },
+  {
+    id: 'fill_hl_eth_1',
+    accountId: 'acct_demo',
+    venue: 'hyperliquid',
+    instrument: 'ETH-PERP',
+    side: 'sell',
+    size: '1.250',
+    price: '3204.80',
+    orderId: 'ord_hl_eth_1',
+    filledAt: '2026-03-09T09:39:00.000Z',
+  },
+  {
+    id: 'fill_ast_btc_1',
+    accountId: 'acct_demo',
+    venue: 'aster',
+    instrument: 'BTC-PERP',
+    side: 'sell',
+    size: '0.080',
+    price: '68395.50',
+    orderId: 'ord_ast_btc_1',
+    filledAt: '2026-03-09T09:36:00.000Z',
+  },
+  {
+    id: 'fill_ast_eth_1',
+    accountId: 'acct_demo',
+    venue: 'aster',
+    instrument: 'ETH-PERP',
+    side: 'buy',
+    size: '0.900',
+    price: '3198.35',
+    orderId: 'ord_ast_eth_1',
+    filledAt: '2026-03-09T09:33:00.000Z',
+  },
+];
+
 const JITTER_WINDOW_MS = 30_000;
 
 function normalizeVenue(venue: string | undefined): string | undefined {
@@ -119,6 +166,17 @@ function getAccountScaleFactor(accountId: string): number {
 function getInstrumentScaleFactor(accountId: string, instrument: string): number {
   const hash = fnv1a32(`${accountId}:${instrument}`);
   return 0.92 + (hash % 17) / 100;
+}
+
+function shiftIsoTimestamp(isoTimestamp: string, accountId: string, seedKey: string): string {
+  const baseTimestamp = Date.parse(isoTimestamp);
+  if (!Number.isFinite(baseTimestamp)) {
+    return isoTimestamp;
+  }
+
+  const hash = fnv1a32(`${accountId}:${seedKey}`);
+  const offsetMinutes = hash % 37;
+  return new Date(baseTimestamp - offsetMinutes * 60_000).toISOString();
 }
 
 export function getMockInstruments(venue?: string): InstrumentMetadata[] {
@@ -176,6 +234,34 @@ export function getMockPositions(accountId?: string): PerpPosition[] {
       ...position,
       size: scaledSize.toFixed(3),
       notionalValue: scaledNotional.toFixed(2),
+    };
+  });
+}
+
+export function getMockPerpFills(accountId?: string, venue?: string): PerpFill[] {
+  const normalizedVenue = normalizeVenue(venue);
+  const fills =
+    normalizedVenue === undefined
+      ? BASE_FILLS
+      : BASE_FILLS.filter((fill) => fill.venue.toLowerCase() === normalizedVenue);
+
+  const normalizedAccountId = accountId?.trim().toLowerCase();
+  if (!normalizedAccountId) {
+    return fills.map((fill) => ({ ...fill }));
+  }
+
+  const accountScaleFactor = getAccountScaleFactor(normalizedAccountId);
+  return fills.map((fill) => {
+    const instrumentScaleFactor = getInstrumentScaleFactor(normalizedAccountId, fill.instrument);
+    const scaledSize = Number(fill.size) * accountScaleFactor * instrumentScaleFactor;
+    const priceFactor = 0.998 + ((fnv1a32(`${normalizedAccountId}:${fill.id}`) % 9) - 4) / 10_000;
+
+    return {
+      ...fill,
+      accountId: normalizedAccountId,
+      size: scaledSize.toFixed(3),
+      price: (Number(fill.price) * priceFactor).toFixed(2),
+      filledAt: shiftIsoTimestamp(fill.filledAt, normalizedAccountId, fill.id),
     };
   });
 }

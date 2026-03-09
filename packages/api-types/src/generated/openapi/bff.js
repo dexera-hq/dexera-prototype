@@ -10,6 +10,7 @@ export const BFF_PUBLIC_PATHS = [
   "/api/v1/perp/actions/unsigned",
   "/api/v1/perp/actions/submit",
   "/api/v1/perp/positions",
+  "/api/v1/perp/fills",
   "/api/v1/perp/orders/status"
 ];
 

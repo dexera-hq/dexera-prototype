@@ -1096,70 +1096,6 @@ body {
   line-height: 1.45;
 }
 
-.order-entry-tracked-actions {
-  display: grid;
-  gap: 0.55rem;
-  border: 1px solid #213244;
-  border-radius: 10px;
-  background: rgba(10, 18, 28, 0.76);
-  padding: 0.72rem;
-}
-
-.order-entry-tracked-actions-list {
-  display: grid;
-  gap: 0.45rem;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.order-entry-tracked-actions-item {
-  display: grid;
-  gap: 0.14rem;
-  border: 1px solid #1d2b3e;
-  border-radius: 8px;
-  background: #0d1520;
-  padding: 0.52rem 0.58rem;
-}
-
-.order-entry-tracked-actions-item p {
-  margin: 0;
-  color: #9db2d1;
-  font-size: 0.76rem;
-  line-height: 1.4;
-}
-
-.order-entry-tracked-status {
-  width: fit-content;
-  border-radius: 999px;
-  border: 1px solid #35577f;
-  color: #9cc2ff;
-  font-size: 0.68rem;
-  font-weight: 680;
-  text-transform: uppercase;
-  padding: 0.1rem 0.38rem;
-}
-
-.order-entry-tracked-status.status-optimistic_submitting,
-.order-entry-tracked-status.status-submitted,
-.order-entry-tracked-status.status-reconciling,
-.order-entry-tracked-status.status-open {
-  border-color: #7d6230;
-  color: #ffd59f;
-}
-
-.order-entry-tracked-status.status-filled {
-  border-color: #2e775f;
-  color: #a7edd3;
-}
-
-.order-entry-tracked-status.status-cancelled,
-.order-entry-tracked-status.status-rejected,
-.order-entry-tracked-status.status-failed {
-  border-color: #8a3d52;
-  color: #ffbac9;
-}
-
 .orderbook {
   display: grid;
   gap: 0.45rem;
@@ -1192,6 +1128,135 @@ body {
 .positions {
   display: grid;
   gap: 0.65rem;
+}
+
+.perp-activity-panel {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.perp-activity-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.perp-activity-panel-title {
+  margin: 0;
+  color: #f2f7ff;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.perp-activity-panel-copy {
+  margin: 0.28rem 0 0;
+  color: #8fa2bf;
+  font-size: 0.82rem;
+}
+
+.perp-activity-panel-pill {
+  width: fit-content;
+  border: 1px solid #2f3a4a;
+  border-radius: 999px;
+  padding: 0.18rem 0.5rem;
+  color: #d9e6fb;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.perp-activity-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.perp-activity-scope span {
+  border: 1px solid #1f2a36;
+  border-radius: 999px;
+  padding: 0.18rem 0.5rem;
+  background: #0e151d;
+  color: #9cb0cd;
+  font-size: 0.75rem;
+}
+
+.perp-activity-table-shell {
+  border: 1px solid #1d2632;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0f151f;
+}
+
+.perp-activity-table-head {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 0.9fr 0.8fr 1.1fr 0.7fr 0.8fr 0.9fr 0.8fr 1.2fr;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid #1d2632;
+  color: #8fa2bf;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.perp-activity-empty {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem 0.9rem;
+}
+
+.perp-activity-table-body {
+  display: grid;
+}
+
+.perp-activity-table-row {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 0.9fr 0.8fr 1.1fr 0.7fr 0.8fr 0.9fr 0.8fr 1.2fr;
+  align-items: center;
+  padding: 0.78rem 0.9rem;
+  border-top: 1px solid #141b24;
+  color: #d9e6fb;
+  font-size: 0.82rem;
+}
+
+.perp-activity-status {
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid #294861;
+  padding: 0.14rem 0.45rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.perp-activity-row-details {
+  color: #8fa2bf;
+}
+
+.perp-activity-status.status-optimistic_submitting,
+.perp-activity-status.status-submitted,
+.perp-activity-status.status-reconciling,
+.perp-activity-status.status-open {
+  border-color: #245784;
+  color: #8fc7ff;
+}
+
+.perp-activity-status.status-filled {
+  border-color: #268f73;
+  color: #85e4bf;
+}
+
+.perp-activity-status.status-cancelled,
+.perp-activity-status.status-rejected,
+.perp-activity-status.status-failed {
+  border-color: #874b5c;
+  color: #ff9bb4;
+}
+
+.perp-activity-empty p {
+  margin: 0;
+  color: #b0c1dc;
+  font-size: 0.84rem;
 }
 
 .positions-pnl {
@@ -1238,6 +1303,14 @@ body {
   .module-wide,
   .module-normal {
     grid-column: span 12;
+  }
+
+  .perp-activity-table-head {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .perp-activity-table-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .positions-grid {

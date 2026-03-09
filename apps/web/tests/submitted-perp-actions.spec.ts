@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  deserializeTrackedPerpActions,
   formatTrackedPerpActionStatusLabel,
   resolveTrackedPerpActionStatus,
+  serializeTrackedPerpActions,
 } from '../lib/wallet/use-submitted-perp-actions';
 
 describe('submitted perp actions tracker helpers', () => {
@@ -28,5 +30,71 @@ describe('submitted perp actions tracker helpers', () => {
     expect(formatTrackedPerpActionStatusLabel('optimistic_submitting')).toBe('optimistic');
     expect(formatTrackedPerpActionStatusLabel('reconciling')).toBe('reconciling');
     expect(formatTrackedPerpActionStatusLabel('filled')).toBe('filled');
+  });
+
+  it('round-trips persisted tracked actions and filters invalid rows', () => {
+    const serialized = serializeTrackedPerpActions({
+      'hyperliquid:0xabc123': [
+        {
+          id: 'tracked_1',
+          accountId: '0xAbC123',
+          venue: 'hyperliquid',
+          instrument: 'btc-perp',
+          side: 'buy',
+          type: 'limit',
+          size: '0.01',
+          limitPrice: '68000',
+          orderId: 'ord_1',
+          actionHash: '0xhash',
+          venueOrderId: '918273',
+          status: 'open',
+          venueStatus: 'open',
+          submittedAt: '2026-03-09T10:00:00.000Z',
+          updatedAt: '2026-03-09T10:00:30.000Z',
+          isTerminal: false,
+          reconciliationAttempts: 2,
+          lastError: undefined,
+        },
+        {
+          id: 'broken',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          instrument: 'eth-perp',
+          side: 'buy',
+          type: 'limit',
+          size: '0.01',
+          status: 'not-a-real-status',
+          submittedAt: '2026-03-09T10:00:00.000Z',
+          updatedAt: '2026-03-09T10:00:30.000Z',
+          isTerminal: false,
+          reconciliationAttempts: 0,
+        } as never,
+      ],
+    });
+
+    expect(deserializeTrackedPerpActions(serialized)).toEqual({
+      'hyperliquid:0xabc123': [
+        {
+          id: 'tracked_1',
+          accountId: '0xabc123',
+          venue: 'hyperliquid',
+          instrument: 'BTC-PERP',
+          side: 'buy',
+          type: 'limit',
+          size: '0.01',
+          limitPrice: '68000',
+          orderId: 'ord_1',
+          actionHash: '0xhash',
+          venueOrderId: '918273',
+          status: 'open',
+          venueStatus: 'open',
+          submittedAt: '2026-03-09T10:00:00.000Z',
+          updatedAt: '2026-03-09T10:00:30.000Z',
+          isTerminal: false,
+          reconciliationAttempts: 2,
+          lastError: undefined,
+        },
+      ],
+    });
   });
 });

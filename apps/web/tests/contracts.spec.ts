@@ -1,6 +1,7 @@
 import {
   BFF_PUBLIC_PATHS,
   type BffBuildUnsignedActionResponse,
+  type BffPerpFillsResponse,
   type BffPerpOrderStatusResponse,
   type BffPerpOrderPreviewResponse,
   type BffSubmitSignedActionResponse,
@@ -19,6 +20,7 @@ describe('generated api contracts', () => {
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/actions/unsigned');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/actions/submit');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/positions');
+    expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/fills');
     expect(BFF_PUBLIC_PATHS).toContain('/api/v1/perp/orders/status');
   });
 
@@ -116,5 +118,28 @@ describe('generated api contracts', () => {
     };
 
     expect(responseFixture.venueOrderId).toBe('918273');
+  });
+
+  it('exposes perp fills response fields in generated types', () => {
+    const responseFixture: BffPerpFillsResponse = {
+      accountId: 'acct_1',
+      venue: 'hyperliquid',
+      fills: [
+        {
+          id: 'fill_1',
+          accountId: 'acct_1',
+          venue: 'hyperliquid',
+          orderId: 'ord_1',
+          instrument: 'BTC-PERP',
+          side: 'buy',
+          size: '0.25',
+          price: '68450.25',
+          filledAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+      source: 'hyperliquid',
+    };
+
+    expect(responseFixture.fills[0]?.orderId).toBe('ord_1');
   });
 });

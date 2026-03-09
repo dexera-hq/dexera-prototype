@@ -168,6 +168,27 @@ export interface BffPerpPositionsResponse {
   source: string;
 }
 
+export interface BffPerpFill {
+  id: string;
+  accountId: string;
+  venue: BffVenueId;
+  orderId: string;
+  instrument: string;
+  side: BffPerpOrderSide;
+  size: string;
+  price: string;
+  feeAmount?: string;
+  feeAsset?: string;
+  filledAt: string;
+}
+
+export interface BffPerpFillsResponse {
+  accountId: string;
+  venue: BffVenueId;
+  fills: BffPerpFill[];
+  source: string;
+}
+
 export interface BffPerpOrderStatusResponse {
   accountId: string;
   venue: BffVenueId;
@@ -325,6 +346,27 @@ export interface BffPerpPositionsResponse {
   accountId: string;
   venue: BffVenueId;
   positions: BffPerpPosition[];
+  source: string;
+}
+
+export interface BffPerpFill {
+  id: string;
+  accountId: string;
+  venue: BffVenueId;
+  orderId: string;
+  instrument: string;
+  side: BffPerpOrderSide;
+  size: string;
+  price: string;
+  feeAmount?: string;
+  feeAsset?: string;
+  filledAt: string;
+}
+
+export interface BffPerpFillsResponse {
+  accountId: string;
+  venue: BffVenueId;
+  fills: BffPerpFill[];
   source: string;
 }
 

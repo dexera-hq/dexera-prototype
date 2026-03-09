@@ -1,5 +1,5 @@
 import type { MarketDataProvider } from '@/lib/market-data/provider';
-import type { InstrumentMetadata, MarkPrice, PerpPosition } from '@/lib/market-data/types';
+import type { InstrumentMetadata, MarkPrice, PerpFill, PerpPosition } from '@/lib/market-data/types';
 
 function notImplemented(methodName: string): never {
   throw new Error(
@@ -21,5 +21,9 @@ export class RealMarketDataProvider implements MarketDataProvider {
 
   async getPositions(_accountId?: string, _venue?: string): Promise<PerpPosition[]> {
     return notImplemented('getPositions');
+  }
+
+  async getPerpFills(_accountId?: string, _venue?: string): Promise<PerpFill[]> {
+    return notImplemented('getPerpFills');
   }
 }

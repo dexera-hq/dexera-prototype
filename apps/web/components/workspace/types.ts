@@ -2,6 +2,7 @@ export const MODULE_KINDS = [
   'overview',
   'chart',
   'trade',
+  'orders',
   'orderbook',
   'positions',
   'custom',
