@@ -12,6 +12,18 @@ export type MarkPrice = {
   timestampMs: number;
 };
 
+export type PriceCandle = {
+  instrument: string;
+  interval: string;
+  openTimeMs: number;
+  closeTimeMs: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
 export type PerpPosition = {
   positionId: string;
   accountId: string;

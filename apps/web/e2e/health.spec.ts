@@ -47,3 +47,23 @@ test('dropping a module onto another module keeps them in the same row', async (
   expect(positionsBox).not.toBeNull();
   expect(Math.abs((nextChartBox?.y ?? 0) - (positionsBox?.y ?? 0))).toBeLessThan(2);
 });
+
+test('price chart mounts and remounts cleanly after removal and reset', async ({ page }) => {
+  const pageErrors: Error[] = [];
+  page.on('pageerror', (error) => {
+    pageErrors.push(error);
+  });
+
+  await page.goto('/');
+  await expect(page.getByTestId('candlestick-chart')).toHaveCount(1);
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await page.getByRole('button', { name: 'Remove Price Chart' }).click();
+    await expect(page.getByTestId('candlestick-chart')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Reset Layout' }).click();
+    await expect(page.getByTestId('candlestick-chart')).toHaveCount(1);
+  }
+
+  expect(pageErrors).toEqual([]);
+});

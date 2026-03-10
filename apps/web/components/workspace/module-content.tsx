@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, Activity, Layers3 } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Layers3 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
+import { CandlestickChartPanel } from '@/components/workspace/candlestick-chart-panel';
 import { OrderBookPanel } from '@/components/workspace/order-book-panel';
 import { OrderEntryPanel } from '@/components/workspace/order-entry-panel';
 import {
@@ -126,7 +127,10 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
           : 'PERP / USD',
     };
   });
-  const repeatedOverviewCards = Array.from({ length: overviewRepeatCount }, () => overviewCards).flat();
+  const repeatedOverviewCards = Array.from(
+    { length: overviewRepeatCount },
+    () => overviewCards,
+  ).flat();
 
   useEffect(() => {
     const marquee = overviewMarqueeRef.current;
@@ -144,12 +148,11 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
         return;
       }
 
-      const nextRepeatCount = Math.max(
-        1,
-        Math.ceil(containerWidth / singleSequenceWidth),
-      );
+      const nextRepeatCount = Math.max(1, Math.ceil(containerWidth / singleSequenceWidth));
 
-      setOverviewRepeatCount((current) => (current === nextRepeatCount ? current : nextRepeatCount));
+      setOverviewRepeatCount((current) =>
+        current === nextRepeatCount ? current : nextRepeatCount,
+      );
     };
 
     updateRepeatCount();
@@ -302,7 +305,10 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
     return (
       <div className="relative flex h-full flex-col gap-4">
         <ErrorBanner error={marketData.error} />
-        <div className="pointer-events-none absolute h-0 overflow-hidden opacity-0" aria-hidden="true">
+        <div
+          className="pointer-events-none absolute h-0 overflow-hidden opacity-0"
+          aria-hidden="true"
+        >
           <div ref={overviewMeasureRef} className="market-ticker-group">
             {overviewCards.map((card) => (
               <article
@@ -385,73 +391,7 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
   }
 
   if (module.kind === 'chart') {
-    const instrument = resolveTradeInstrument(marketData);
-    const mark = marketData.marks[instrument];
-    const delta = deterministicDelta(instrument);
-
-    return (
-      <div className="flex h-full flex-col gap-4">
-        <ErrorBanner error={marketData.error} />
-        <div className="relative flex min-h-[320px] flex-1 overflow-hidden rounded-xl bg-[radial-gradient(circle_at_top_left,rgba(110,231,183,0.16),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0))]">
-          <div
-            className="absolute inset-0 opacity-60"
-            aria-hidden="true"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgba(148, 163, 184, 0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(148, 163, 184, 0.12) 1px, transparent 1px)',
-              backgroundSize: 'calc(100% / 8) 100%, 100% calc(100% / 5)',
-            }}
-          />
-
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-3 p-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="border-border/70 bg-background/70">
-                {instrument}
-              </Badge>
-              <DeltaBadge delta={delta} />
-            </div>
-            <div className="flex items-center gap-2 rounded-full bg-background/65 px-3 py-1.5 backdrop-blur-sm">
-              <Activity className="size-4 text-muted-foreground" />
-              <div className="text-right">
-                <p className="text-sm font-semibold tracking-tight text-foreground">
-                  {mark ? formatUSD(mark.price) : '--'}
-                </p>
-                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                  Placeholder
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative flex flex-1 items-end pt-16">
-            <svg className="h-full w-full" viewBox="0 0 800 320" aria-hidden="true">
-              <defs>
-                <linearGradient id="chartStroke" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="rgba(134, 239, 172, 0.7)" />
-                  <stop offset="100%" stopColor="rgba(110, 231, 183, 1)" />
-                </linearGradient>
-                <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="rgba(110, 231, 183, 0.28)" />
-                  <stop offset="100%" stopColor="rgba(110, 231, 183, 0)" />
-                </linearGradient>
-              </defs>
-              <path
-                d="M0 268 C65 260, 120 238, 175 222 C232 205, 286 214, 345 184 C398 157, 446 109, 512 118 C585 128, 636 164, 706 136 C748 118, 774 96, 800 72"
-                fill="none"
-                stroke="url(#chartStroke)"
-                strokeWidth="4"
-                strokeLinecap="round"
-              />
-              <path
-                d="M0 268 C65 260, 120 238, 175 222 C232 205, 286 214, 345 184 C398 157, 446 109, 512 118 C585 128, 636 164, 706 136 C748 118, 774 96, 800 72 L800 320 L0 320 Z"
-                fill="url(#chartFill)"
-              />
-            </svg>
-          </div>
-
-        </div>
-      </div>
-    );
+    return <CandlestickChartPanel />;
   }
 
   if (module.kind === 'trade') {
