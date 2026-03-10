@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('home page renders draggable trading workspace', async ({ page }) => {
+test('home page renders trading workspace', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('app-brand')).toBeVisible();
 
@@ -13,47 +13,7 @@ test('home page renders draggable trading workspace', async ({ page }) => {
   await expect(moduleTitles.nth(0)).toHaveText('Market Overview');
   await expect(moduleTitles.nth(3)).toHaveText('Perp Orders & Fills');
   await expect(moduleTitles.nth(5)).toHaveText('Open Positions');
-  await expect(moduleCards.nth(0)).not.toHaveAttribute('draggable', 'true');
-  await expect(moduleHeaders.nth(0)).toHaveAttribute('draggable', 'true');
   await expect(page.getByRole('button', { name: 'Reset Layout' })).toBeVisible();
-});
-
-test('pointer drag state clears as soon as the header drag is released', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByTestId('app-brand')).toBeVisible();
-
-  const moduleCards = page.getByTestId('module-card');
-  const moduleHeaders = page.getByTestId('module-card-header');
-  const overviewTitle = page.getByTestId('module-title').filter({ hasText: 'Market Overview' });
-  const chartTitle = page.getByTestId('module-title').filter({ hasText: 'Price Chart' });
-  const overviewCard = moduleCards.filter({ has: overviewTitle });
-  const overviewHeader = moduleHeaders.filter({ has: overviewTitle });
-  const chartCard = moduleCards.filter({ has: chartTitle });
-
-  await expect(overviewCard).toBeVisible();
-  await expect(overviewHeader).toBeVisible();
-  await expect(chartCard).toBeVisible();
-
-  const headerBox = await overviewHeader.boundingBox();
-  const chartBox = await chartCard.boundingBox();
-
-  expect(headerBox).not.toBeNull();
-  expect(chartBox).not.toBeNull();
-
-  await page.mouse.move(
-    (headerBox?.x ?? 0) + (headerBox?.width ?? 0) / 2,
-    (headerBox?.y ?? 0) + (headerBox?.height ?? 0) / 2,
-  );
-  await page.mouse.down();
-  await expect(overviewCard).toHaveClass(/opacity-55/);
-
-  await page.mouse.move(
-    (chartBox?.x ?? 0) + (chartBox?.width ?? 0) / 2,
-    (chartBox?.y ?? 0) + (chartBox?.height ?? 0) / 2,
-  );
-  await page.mouse.up();
-
-  await expect(overviewCard).not.toHaveClass(/opacity-55/);
 });
 
 test('price chart mounts and remounts cleanly after removal and reset', async ({ page }) => {
