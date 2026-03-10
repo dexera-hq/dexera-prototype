@@ -4,8 +4,10 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 COMPOSE_FILE="$ROOT_DIR/docker-compose.dev.yml"
+COMPOSE_STUBS_FILE="$ROOT_DIR/docker-compose.dev.stubs.yml"
 DOTENV_FILE="$ROOT_DIR/.env"
 DOTENV_EXAMPLE_FILE="$ROOT_DIR/.env.example"
+COMPOSE_PROJECT_NAME="dexera-dev"
 
 if docker compose version >/dev/null 2>&1; then
   COMPOSE_VARIANT="plugin"
@@ -18,22 +20,32 @@ fi
 
 run_compose() {
   if [ "$COMPOSE_VARIANT" = "plugin" ]; then
-    docker compose -f "$COMPOSE_FILE" "$@"
+    docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
   else
-    docker-compose -f "$COMPOSE_FILE" "$@"
+    docker-compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
   fi
 }
 
 run_compose_profiled() {
   if [ "${STUBS:-0}" = "1" ]; then
-    run_compose --profile stubs "$@"
+    if [ "$COMPOSE_VARIANT" = "plugin" ]; then
+      docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" -f "$COMPOSE_STUBS_FILE" "$@"
+    else
+      docker-compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" -f "$COMPOSE_STUBS_FILE" "$@"
+    fi
   else
     run_compose "$@"
   fi
 }
 
 down_all() {
-  run_compose --profile stubs down -v --remove-orphans >/dev/null 2>&1 || true
+  if [ -f "$COMPOSE_STUBS_FILE" ]; then
+    if [ "$COMPOSE_VARIANT" = "plugin" ]; then
+      docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" -f "$COMPOSE_STUBS_FILE" down -v --remove-orphans >/dev/null 2>&1 || true
+    else
+      docker-compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" -f "$COMPOSE_STUBS_FILE" down -v --remove-orphans >/dev/null 2>&1 || true
+    fi
+  fi
   run_compose down -v --remove-orphans >/dev/null 2>&1 || true
 }
 
@@ -62,7 +74,11 @@ case "$COMMAND" in
     run_compose_profiled ps
     ;;
   down)
-    run_compose --profile stubs down -v --remove-orphans || true
+    if [ "$COMPOSE_VARIANT" = "plugin" ]; then
+      docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" -f "$COMPOSE_STUBS_FILE" down -v --remove-orphans || true
+    else
+      docker-compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" -f "$COMPOSE_STUBS_FILE" down -v --remove-orphans || true
+    fi
     run_compose down -v --remove-orphans || true
     ;;
   logs)
