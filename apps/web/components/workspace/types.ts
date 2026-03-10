@@ -4,6 +4,7 @@ export const MODULE_KINDS = [
   'trade',
   'orders',
   'orderbook',
+  'exposure',
   'positions',
   'custom',
 ] as const;

@@ -39,9 +39,9 @@ describe('workspace layout serialization', () => {
       modules: [
         {
           id: 10,
-          kind: 'trade',
-          label: 'Trade Panel',
-          layout: { columns: 4, minHeight: 440 },
+          kind: 'exposure',
+          label: 'Exposure',
+          layout: { columns: 4, minHeight: 360 },
           config: {
             mode: 'limit',
             allocations: [25, 50, 75, 100],

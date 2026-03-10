@@ -26,6 +26,7 @@ const MODULE_DEFAULT_LAYOUTS: Record<ModuleKind, WorkspaceModuleLayout> = {
   trade: { columns: 4, minHeight: 360 },
   orders: { columns: 8, minHeight: 340 },
   orderbook: { columns: 4, minHeight: 340 },
+  exposure: { columns: 4, minHeight: 360 },
   positions: { columns: 8, minHeight: 320 },
   custom: { columns: 4, minHeight: 280 },
 };
@@ -73,6 +74,13 @@ export const initialModules: WorkspaceModule[] = [
     layout: createModuleLayout('positions'),
     config: {},
   },
+  {
+    id: 7,
+    kind: 'exposure',
+    label: 'Exposure Dashboard',
+    layout: createModuleLayout('exposure'),
+    config: {},
+  },
 ];
 
 export function createModuleLayout(
@@ -80,18 +88,16 @@ export function createModuleLayout(
   layout?: Partial<WorkspaceModuleLayout>,
 ): WorkspaceModuleLayout {
   const defaultLayout = MODULE_DEFAULT_LAYOUTS[kind];
-  const columns = Number.isInteger(layout?.columns) ? Number(layout?.columns) : defaultLayout.columns;
+  const columns = Number.isInteger(layout?.columns)
+    ? Number(layout?.columns)
+    : defaultLayout.columns;
   const minHeight = Number.isFinite(layout?.minHeight)
     ? Number(layout?.minHeight)
     : defaultLayout.minHeight;
 
   return {
     columns: clampInteger(columns, MIN_WORKSPACE_MODULE_COLUMNS, WORKSPACE_GRID_COLUMNS),
-    minHeight: clampInteger(
-      minHeight,
-      defaultLayout.minHeight,
-      MAX_WORKSPACE_MODULE_HEIGHT,
-    ),
+    minHeight: clampInteger(minHeight, defaultLayout.minHeight, MAX_WORKSPACE_MODULE_HEIGHT),
   };
 }
 
@@ -220,8 +226,7 @@ export function moveModuleToSharedRow(
     return reorderedModules;
   }
 
-  const insertionIndex =
-    targetRowIds.indexOf(targetId) + (placement === 'after' ? 1 : 0);
+  const insertionIndex = targetRowIds.indexOf(targetId) + (placement === 'after' ? 1 : 0);
   const nextRowIds = [...targetRowIds];
   nextRowIds.splice(insertionIndex, 0, sourceId);
 
@@ -298,7 +303,9 @@ function rebalanceRowModules(modules: WorkspaceModule[], rowIds: number[]): Work
   }
 
   const nextColumns = distributeColumnsAcrossRow(rowModules.map((module) => module.layout.columns));
-  const nextColumnsById = new Map(rowModules.map((module, index) => [module.id, nextColumns[index] ?? module.layout.columns]));
+  const nextColumnsById = new Map(
+    rowModules.map((module, index) => [module.id, nextColumns[index] ?? module.layout.columns]),
+  );
 
   return normalizedModules.map((module) =>
     rowIdSet.has(module.id)

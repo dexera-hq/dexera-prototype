@@ -19,6 +19,7 @@ export type WorkspaceMarketDataState = {
   instruments: InstrumentMetadata[];
   marks: Record<string, MarkPrice>;
   positions: PerpPosition[];
+  connectedWalletCount: number;
   loading: boolean;
   error: string | null;
 };
@@ -27,6 +28,7 @@ const INITIAL_MARKET_DATA_STATE: WorkspaceMarketDataState = {
   instruments: [],
   marks: {},
   positions: [],
+  connectedWalletCount: 0,
   loading: true,
   error: null,
 };
@@ -205,6 +207,7 @@ export function useWorkspaceMarketData(): WorkspaceMarketDataState {
     instruments,
     marks,
     positions,
+    connectedWalletCount: connectedWallets.length,
     loading: referenceLoading || positionsLoading || !hasHydrated,
     error: combineErrors(referenceError, positionsError),
   };
