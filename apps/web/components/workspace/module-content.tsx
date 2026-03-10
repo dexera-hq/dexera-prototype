@@ -5,6 +5,7 @@ import { ArrowDownRight, ArrowUpRight, Layers3 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { CandlestickChartPanel } from '@/components/workspace/candlestick-chart-panel';
+import { ExposureDashboardPanel } from '@/components/workspace/exposure-dashboard-panel';
 import { OrderBookPanel } from '@/components/workspace/order-book-panel';
 import { OrderEntryPanel } from '@/components/workspace/order-entry-panel';
 import {
@@ -420,6 +421,19 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
       <div className="flex h-full flex-col gap-4">
         <ErrorBanner error={marketData.error} />
         <OrderBookPanel instrument={instrument} midPrice={mid} />
+      </div>
+    );
+  }
+
+  if (module.kind === 'exposure') {
+    return (
+      <div className="flex h-full flex-col gap-4">
+        <ErrorBanner error={marketData.error} />
+        <ExposureDashboardPanel
+          positions={marketData.positions}
+          connectedWalletCount={marketData.connectedWalletCount}
+          loading={marketData.loading}
+        />
       </div>
     );
   }
