@@ -4,15 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, Activity, Layers3 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { OrderBookPanel } from '@/components/workspace/order-book-panel';
 import { OrderEntryPanel } from '@/components/workspace/order-entry-panel';
 import {
@@ -21,9 +12,9 @@ import {
   wrapTickerOffset,
 } from '@/components/workspace/overview-ticker-motion';
 import { PerpOrdersFillsPanel } from '@/components/workspace/perp-orders-fills-panel';
+import { PositionsPanel } from '@/components/workspace/positions-panel';
 import type { WorkspaceModule } from '@/components/workspace/types';
 import type { WorkspaceMarketDataState } from '@/components/workspace/use-workspace-market-data';
-import { getWalletVenueLabel } from '@/lib/wallet/chains';
 import { cn } from '@/lib/utils';
 
 const DEFAULT_INSTRUMENT_ORDER = ['BTC-PERP', 'ETH-PERP', 'SOL-PERP'];
@@ -35,19 +26,6 @@ const USD_FORMATTER = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
-
-function formatUsd(value: string): string {
-  const normalizedValue = Number(value);
-
-  if (!Number.isFinite(normalizedValue)) {
-    return `$${value}`;
-  }
-
-  return `$${normalizedValue.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
 
 function formatUSD(value: number): string {
   return USD_FORMATTER.format(value);
@@ -79,19 +57,6 @@ function resolveTradeInstrument(marketData: WorkspaceMarketDataState): string {
   }
 
   return marketData.instruments[0]?.instrument ?? 'ETH-PERP';
-}
-
-function parseNumeric(value: string): number {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function truncateAccountId(accountId: string): string {
-  if (accountId.length <= 14) {
-    return accountId;
-  }
-
-  return `${accountId.slice(0, 8)}...${accountId.slice(-4)}`;
 }
 
 function formatClock(timestampMs?: number): string {
@@ -520,88 +485,10 @@ export function ModuleContent({ module, marketData }: ModuleContentProps) {
   }
 
   if (module.kind === 'positions') {
-    const positions = marketData.positions;
-    const totalValue = positions.reduce(
-      (sum, position) => sum + parseNumeric(position.notionalValue),
-      0,
-    );
-
     return (
       <div className="flex h-full flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/40 px-4 py-3">
-          <div>
-            <p className="text-sm font-medium text-foreground">Open positions</p>
-            <p className="text-sm text-muted-foreground">Cross-venue perp exposure summary</p>
-          </div>
-          <Badge variant="secondary">Total {formatUSD(totalValue)}</Badge>
-        </div>
-
         <ErrorBanner error={marketData.error} />
-
-        {marketData.loading && positions.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-background/40 px-4 py-8 text-center text-sm text-muted-foreground">
-            Loading positions...
-          </div>
-        ) : positions.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-background/40 px-4 py-8 text-center">
-            <p className="text-sm font-medium text-foreground">No connected wallet positions</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Connect a wallet slot to load live perp positions by wallet and venue.
-            </p>
-          </div>
-        ) : (
-          <ScrollArea className="max-h-[360px] rounded-xl border border-border/70 bg-background/20">
-            <Table className="min-w-[860px]">
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Wallet</TableHead>
-                  <TableHead>Venue</TableHead>
-                  <TableHead>Instrument</TableHead>
-                  <TableHead>Direction</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead>Entry</TableHead>
-                  <TableHead>Mark</TableHead>
-                  <TableHead>Unrealized PnL</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {positions.map((position) => {
-                  const instrument = position.instrument.toUpperCase();
-                  const positive = parseNumeric(position.unrealizedPnlUsd) >= 0;
-
-                  return (
-                    <TableRow key={position.positionId}>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {truncateAccountId(position.accountId)}
-                      </TableCell>
-                      <TableCell>{getWalletVenueLabel(position.venue)}</TableCell>
-                      <TableCell className="font-medium text-foreground">{instrument}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={position.direction === 'long' ? 'success' : 'destructive'}
-                          className="uppercase"
-                        >
-                          {position.direction.toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{position.size}</TableCell>
-                      <TableCell>{formatUsd(position.entryPrice)}</TableCell>
-                      <TableCell>{formatUsd(position.markPrice)}</TableCell>
-                      <TableCell
-                        className={cn(
-                          'font-medium',
-                          positive ? 'text-emerald-200' : 'text-rose-200',
-                        )}
-                      >
-                        {formatUsd(position.unrealizedPnlUsd)}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </ScrollArea>
-        )}
+        <PositionsPanel positions={marketData.positions} loading={marketData.loading} />
       </div>
     );
   }
