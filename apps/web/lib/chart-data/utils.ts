@@ -69,6 +69,15 @@ export function mergePriceCandles(
   return merged.slice(Math.max(0, merged.length - maxCandles));
 }
 
+export function getSeriesUpdateCandles(
+  currentCandles: PriceCandle[],
+  nextCandles: PriceCandle[],
+): PriceCandle[] {
+  const currentLastOpenTimeMs = currentCandles[currentCandles.length - 1]?.openTimeMs ?? -Infinity;
+
+  return nextCandles.filter((candle) => candle.openTimeMs >= currentLastOpenTimeMs);
+}
+
 export function createCandleRange(
   limit: number,
   endTimeMs: number,

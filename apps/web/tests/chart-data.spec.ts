@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateMockPriceCandles } from '../lib/chart-data/mock-chart-data';
-import { mergePriceCandles } from '../lib/chart-data/utils';
+import { getSeriesUpdateCandles, mergePriceCandles } from '../lib/chart-data/utils';
 
 describe('chart data utilities', () => {
   it('generates stable historical 1m candles for the same active minute', () => {
@@ -72,5 +72,27 @@ describe('chart data utilities', () => {
     expect(merged[0]?.openTimeMs).toBe(currentCandles[1]?.openTimeMs);
     expect(merged.at(-1)?.openTimeMs).toBe(nextCandles.at(-1)?.openTimeMs);
     expect(merged.at(-2)?.close).toBe(nextCandles[0]?.close);
+  });
+
+  it('only returns candles that can be safely applied through series.update', () => {
+    const currentCandles = generateMockPriceCandles({
+      instrument: 'BTC-PERP',
+      interval: '1m',
+      limit: 3,
+      endTimeMs: Date.UTC(2026, 2, 10, 10, 16, 8),
+      nowMs: Date.UTC(2026, 2, 10, 10, 16, 8),
+    });
+    const nextCandles = generateMockPriceCandles({
+      instrument: 'BTC-PERP',
+      interval: '1m',
+      limit: 2,
+      endTimeMs: Date.UTC(2026, 2, 10, 10, 16, 30),
+      nowMs: Date.UTC(2026, 2, 10, 10, 16, 30),
+    });
+
+    const updateCandles = getSeriesUpdateCandles(currentCandles, nextCandles);
+
+    expect(updateCandles).toHaveLength(1);
+    expect(updateCandles[0]?.openTimeMs).toBe(currentCandles.at(-1)?.openTimeMs);
   });
 });

@@ -10,7 +10,11 @@ import type {
   UTCTimestamp,
 } from 'lightweight-charts';
 import { Badge } from '@/components/ui/badge';
-import { DEFAULT_CANDLE_LIMIT, mergePriceCandles } from '@/lib/chart-data/utils';
+import {
+  DEFAULT_CANDLE_LIMIT,
+  getSeriesUpdateCandles,
+  mergePriceCandles,
+} from '@/lib/chart-data/utils';
 import type { PriceCandle } from '@/lib/market-data/types';
 
 const CHART_INSTRUMENT = 'BTC-PERP';
@@ -138,12 +142,12 @@ export function CandlestickChartPanel() {
           series.setData(candlesRef.current.map(toChartData));
           chart.timeScale().fitContent();
         } else {
-          candlesRef.current = mergePriceCandles(
-            candlesRef.current,
-            nextCandles,
-            DEFAULT_CANDLE_LIMIT,
-          );
-          for (const candle of nextCandles) {
+          const currentCandles = candlesRef.current;
+          const seriesUpdateCandles = getSeriesUpdateCandles(currentCandles, nextCandles);
+
+          candlesRef.current = mergePriceCandles(currentCandles, nextCandles, DEFAULT_CANDLE_LIMIT);
+
+          for (const candle of seriesUpdateCandles) {
             series.update(toChartData(candle));
           }
         }
@@ -294,7 +298,7 @@ export function CandlestickChartPanel() {
   return (
     <section
       data-testid="candlestick-chart"
-      className="flex h-full min-h-[320px] flex-col overflow-hidden rounded-[1.35rem] border border-border/70 bg-[radial-gradient(circle_at_top_left,rgba(110,231,183,0.18),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))]"
+      className="flex h-full min-h-[320px] flex-col overflow-hidden rounded-[1.35rem] border border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018))]"
     >
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 px-4 py-4">
         <div>
