@@ -29,6 +29,7 @@
     "@tanstack/react-query": "^5.87.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "lightweight-charts": "^5.1.0",
     "lucide-react": "^0.577.0",
     "next": "^15.5.2",
     "postcss": "^8.5.8",

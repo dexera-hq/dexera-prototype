@@ -193,6 +193,7 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
   const [resizingId, setResizingId] = useState<number | null>(null);
   const [hasLoadedPersistedLayout, setHasLoadedPersistedLayout] = useState(false);
   const dragSourceIdRef = useRef<number | null>(null);
+  const dragInteractionModeRef = useRef<'native' | 'pointer' | null>(null);
   const dropTargetRef = useRef<WorkspaceDropTarget | null>(null);
   const resizeSessionRef = useRef<ResizeSession | null>(null);
 
@@ -272,6 +273,34 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
     };
   }, [resizingId]);
 
+  useEffect(() => {
+    if (draggingId === null) {
+      return;
+    }
+
+    const handlePointerRelease = () => {
+      if (dragInteractionModeRef.current !== 'pointer') {
+        return;
+      }
+
+      dragInteractionModeRef.current = null;
+      dragSourceIdRef.current = null;
+      dropTargetRef.current = null;
+      setDraggingId(null);
+      setDropTarget(null);
+    };
+
+    window.addEventListener('pointerup', handlePointerRelease);
+    window.addEventListener('pointercancel', handlePointerRelease);
+    window.addEventListener('blur', handlePointerRelease);
+
+    return () => {
+      window.removeEventListener('pointerup', handlePointerRelease);
+      window.removeEventListener('pointercancel', handlePointerRelease);
+      window.removeEventListener('blur', handlePointerRelease);
+    };
+  }, [draggingId]);
+
   const addModule = () => {
     setModules((currentModules) => [...currentModules, createCustomModule(nextModuleId)]);
     setNextModuleId((currentId) => currentId + 1);
@@ -284,6 +313,7 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
   const resetLayout = () => {
     setModules(initialModules);
     setNextModuleId(getNextModuleId(initialModules));
+    dragInteractionModeRef.current = null;
     dragSourceIdRef.current = null;
     dropTargetRef.current = null;
     resizeSessionRef.current = null;
@@ -303,6 +333,7 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
       return;
     }
 
+    dragInteractionModeRef.current = 'native';
     dragSourceIdRef.current = id;
     event.dataTransfer.setData('text/plain', String(id));
     event.dataTransfer.effectAllowed = 'move';
@@ -319,6 +350,7 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
       return;
     }
 
+    dragInteractionModeRef.current = 'pointer';
     dragSourceIdRef.current = id;
     setDraggingId(id);
   };
@@ -328,6 +360,7 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
     placement: WorkspaceInsertionPlacement,
   ) => {
     if (
+      dragInteractionModeRef.current !== 'pointer' ||
       resizingId !== null ||
       dragSourceIdRef.current === null ||
       targetId === dragSourceIdRef.current
@@ -344,7 +377,7 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
     targetId: number,
     placement: WorkspaceInsertionPlacement,
   ) => {
-    if (resizingId !== null) {
+    if (resizingId !== null || dragInteractionModeRef.current !== 'pointer') {
       return;
     }
 
@@ -355,6 +388,7 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
       );
     }
 
+    dragInteractionModeRef.current = null;
     dragSourceIdRef.current = null;
     dropTargetRef.current = null;
     setDraggingId(null);
@@ -481,6 +515,7 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
       startY: event.clientY,
       columnStep,
     };
+    dragInteractionModeRef.current = null;
     dragSourceIdRef.current = null;
     dropTargetRef.current = null;
     setDraggingId(null);
@@ -489,6 +524,7 @@ export function useWorkspaceModules(gridRef: RefObject<HTMLElement | null>) {
   };
 
   const clearDragState = () => {
+    dragInteractionModeRef.current = null;
     dragSourceIdRef.current = null;
     dropTargetRef.current = null;
     setDraggingId(null);
