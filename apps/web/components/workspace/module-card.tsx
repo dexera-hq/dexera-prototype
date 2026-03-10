@@ -115,9 +115,6 @@ export function WorkspaceModuleCard({
         isResizing && 'border-primary/70 shadow-[0_0_0_1px_rgba(244,114,182,0.25)]',
       )}
       style={moduleStyle}
-      draggable={!isDraggingAnotherModule}
-      onDragStart={(event) => onDragStart(module.id, event)}
-      onPointerDown={(event) => onPointerDownOnModule(module.id, event)}
       onPointerEnter={(event) => {
         if (!isDraggingAnotherModule) {
           return;
@@ -148,9 +145,18 @@ export function WorkspaceModuleCard({
         }
         onDropOnModule(module.id, resolvePlacement(event), event);
       }}
-      onDragEnd={onDragEnd}
     >
-      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border/70 bg-background/35 px-4 py-3">
+      <CardHeader
+        data-testid="module-card-header"
+        className={cn(
+          'flex flex-row items-center justify-between gap-3 border-b border-border/70 bg-background/35 px-4 py-3 select-none',
+          !isDraggingAnotherModule && !isResizing && 'cursor-grab active:cursor-grabbing',
+        )}
+        draggable={!isDraggingAnotherModule && !isResizing}
+        onDragStart={(event) => onDragStart(module.id, event)}
+        onPointerDown={(event) => onPointerDownOnModule(module.id, event)}
+        onDragEnd={onDragEnd}
+      >
         <div className="flex min-w-0 items-center gap-3">
           <span
             className="flex size-8 items-center justify-center rounded-md border border-border/70 bg-background/80 text-muted-foreground"
